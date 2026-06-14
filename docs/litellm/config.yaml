@@ -1,0 +1,21 @@
+model_list:
+  - model_name: openai
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPEN_API_KEY
+  - model_name: openrouter
+    litellm_params:
+      model: openai/gpt-oss-120b:free
+      base_url: "https://openrouter.ai/api/v1"
+      api_key: os.environ/OPENROUTER_API_KEY
+
+router_settings:
+  num_retries: 3              # Количество попыток при ошибке
+  retry_after: 5              # Пауза между попытками (сек)
+  timeout: 60                 # Тайм-аут запроса
+  fallbacks: [{"openai": ["openrouter"]}]
+
+
+
+
+
