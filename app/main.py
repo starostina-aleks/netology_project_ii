@@ -8,6 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from openai import AsyncOpenAI
+from structlog.contextvars import bind_contextvars, clear_contextvars
+import structlog
+
+
 
 try:
     from redis.asyncio import Redis
@@ -17,14 +21,19 @@ except ImportError:
 from app.core.config import get_settings
 from app.routers import chat, health, models
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
+from app.observability.tracing import setup_tracing
+from app.observability.logging import setup_logging
 
-logger = logging.getLogger("llm-service")
-logging.basicConfig(level=logging.INFO)
+#logger = logging.getLogger("llm-service")
+#logging.basicConfig(level=logging.INFO)
 
 settings = get_settings()
+setup_logging(settings.log_level)
+logger = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_tracing()
 
     app.state.llm = AsyncOpenAI(
         api_key=settings.llm.openai_api_key.get_secret_value(),
@@ -72,7 +81,25 @@ app.add_middleware(
 
 @app.middleware("http")
 async def observability_middleware(request: Request, call_next):
-    request.state.request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex)
+    # 1. Очищаем контекст перед началом обработки запроса
+    clear_contextvars()
+
+    # 2. Получаем или генерируем короткий request_id (12 символов)
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+
+    # Имитируем получение user_id (замените на ваш реальный источник)
+    user_id = request.headers.get("X-User-ID", "anonymous")
+
+    # 3. Привязываем переменные к контексту structlog
+    bind_contextvars(
+        request_id=request_id,
+        user_id=user_id,
+        path=request.url.path,
+        method=request.method
+    )
+
+    # Сохраняем в state для совместимости с бизнес-логикой
+    request.state.request_id = request_id
     request.state.llm_cost = 0.0
     request.state.llm_tokens = 0
 
@@ -86,13 +113,11 @@ async def observability_middleware(request: Request, call_next):
     duration_ms = (time.perf_counter() - t0) * 1000
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["X-LLM-Cost-USD"] = f"{request.state.llm_cost:.6f}"
+
     logger.info(
-        "request method=%s path=%s status=%s duration_ms=%.2f request_id=%s",
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-        request.state.request_id,
+        "http_request_processed",
+        status=response.status_code,
+        duration_ms=round(duration_ms, 2)
     )
     return response
 

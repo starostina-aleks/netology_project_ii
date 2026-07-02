@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Literal
 
 
 class LLMSettings(BaseSettings):
@@ -28,6 +29,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     cache_ttl_seconds: int = 3600
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    # Строгая валидация уровня логирования (только верхний регистр)
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
 
 @lru_cache
