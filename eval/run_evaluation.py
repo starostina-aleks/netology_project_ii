@@ -6,6 +6,12 @@ from app.core.config import get_settings
 from app.schemas.chat import ChatRequest,Message
 from openai import AsyncOpenAI
 import asyncio
+from eval.prompt_eval import G_EVAL
+from statistics import mean
+from datetime import datetime, UTC
+import uuid
+from pathlib import Path
+
 
 settings = get_settings()
 
@@ -28,10 +34,26 @@ llm = AsyncOpenAI(
         max_retries=settings.llm.max_retries,
     )
 
+client = AsyncOpenAI(
+        api_key=settings.llm.openai_api_key.get_secret_value(),
+        base_url=settings.llm.base_url,
+        timeout=settings.llm.request_timeout,
+        max_retries=settings.llm.max_retries,
+    )
 service=LLMService(llm,None)
-
 service_judge=LLMService(llm,None)
 
+async def g_eval(question:str, answer:str)->dict:
+    resp = await client.chat.completions.create(
+        model="openai/gpt-oss-120b:free",
+        messages=[{"role":"user",
+            "content": G_EVAL.format(question=question, answer=answer)
+        }],
+        temperature=0.0,
+        response_format={"type":"json_object"}
+    )
+    return json.loads(resp.choices[0].message.content)
+model_under_test="meta-llama/llama-3.3-70b-instruct:free"#"openai/gpt-oss-120b:free"
 async def main():
     parser = argparse.ArgumentParser(description="Запуск оценки моделей.")
     parser.add_argument("--golden", type=str, required=True, help="Путь к golden_dataset.json")
@@ -44,25 +66,78 @@ async def main():
     print(f"Загрузка датасета: {args.golden}")
     dataset = load_golden_dataset(args.golden)
 
-    if dataset:
-        print(f"Успешно загружено. Версия датасета: {dataset.get('version')}")
-        items = dataset.get("items", [])
-        print(f"Найдено тестовых вопросов: {len(items)}\n")
-        results=[]
-        # 2. Пример итерации по загруженным элементам
-        for item in items:
-            req = ChatRequest(
-                messages=[
-
-                    Message(role="user", content= item.get('question'))
-                ],
-                model="openai/gpt-oss-120b:free",
+    if dataset is None:
+        return
+    items = dataset.get("items", [])
+    print(f"Найдено тестовых вопросов: {len(items)}\n")
+    # 2. Генерация ответов модели
+    answers=[]
+    for item in items:
+        question = item["question"]
+        print("start")
+        req = ChatRequest( messages=[ Message(role="user", content= question)],
+                model=model_under_test,
                 temperature=0.0,
                 max_tokens=512
             )
-            result=await service.complete(req= req)
-            print(result.content)
-            results.append(result.content)
-            break
+        result = await service.complete(req=req)
+        print("end")
+        answers.append({
+            "id": item["id"],
+            "question": question,
+            "answer": result.content,
+        })
+        break
+    # 3. Оценка через G-Eval
+    evaluations = []
+    for sample in answers:
+        evaluation = await g_eval(
+            question=sample["question"],
+            answer=sample["answer"],
+        )
+        evaluations.append(
+            {
+                "id": sample["id"],
+                "question": sample["question"],
+                "answer": sample["answer"],
+                "scores": evaluation["scores"],
+                "reasoning": evaluation["reasoning"],
+                "explanation": evaluation["explanation"],
+            }
+        )
+    # 4. Агрегация метрик
+    relevance_avg = mean(e["scores"]["relevance"] for e in evaluations)
+    correctness_avg = mean(e["scores"]["correctness"] for e in evaluations)
+    completeness_avg = mean(e["scores"]["completeness"] for e in evaluations)
+
+    aggregates = {
+        "relevance_avg": round(relevance_avg, 2),
+        "correctness_avg": round(correctness_avg, 2),
+        "completeness_avg": round(completeness_avg, 2),
+        "min_correctness": min(e["scores"]["correctness"] for e in evaluations),
+    }
+
+    # 5. Итоговый результат
+    result_json = {
+        "run_id": str(uuid.uuid4()),
+        "timestamp": datetime.now(UTC).isoformat(),
+        "model_under_test": model_under_test,
+        "judge_model": args.judge,
+        "golden_version": dataset.get("version"),
+        "items": evaluations,
+        "aggregates": aggregates,
+    }
+
+    # 6. Сохранение
+    out_dir = Path("eval/runs")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_file = out_dir / f"{datetime.now().date()}.json"
+
+    with out_file.open("w", encoding="utf-8") as f:
+        json.dump(result_json, f, ensure_ascii=False, indent=2)
+
+    print(f"Результаты сохранены в {out_file}")
+
 
 asyncio.run(main())
