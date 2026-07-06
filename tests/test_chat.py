@@ -1,5 +1,4 @@
 from tests.conftest import _make_openai_response, make_rate_limit_error
-from app.core.exceptions import LLMRateLimitError
 import pytest
 from openai import (
         APIConnectionError,
@@ -9,6 +8,7 @@ from openai import (
         RateLimitError,
     )
 from tenacity import RetryError
+
 
 async def test_chat_ok(client, mock_llm):
     mock_llm.chat.completions.create.return_value = _make_openai_response()

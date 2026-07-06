@@ -5,11 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Role = Literal["system", "user", "assistant", "tool"]
 
 
-class Message(BaseModel):
-    role: Role
-    content: Annotated[str, Field(min_length=1, max_length=100_000)]
-
-
 class Usage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -24,6 +19,9 @@ class Usage(BaseModel):
             total_tokens=getattr(u, "total_tokens", 0),
         )
 
+class Message(BaseModel):
+    role: Role
+    content: Annotated[str, Field(min_length=1, max_length=100_000)]
 
 class ChatRequest(BaseModel):
     model_config = ConfigDict(
