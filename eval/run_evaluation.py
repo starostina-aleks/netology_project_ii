@@ -10,7 +10,7 @@ from eval.prompt_eval import G_EVAL
 from statistics import mean
 from datetime import datetime, UTC
 import uuid
-from pathlib import Path
+
 
 
 settings = get_settings()
@@ -43,17 +43,21 @@ client = AsyncOpenAI(
 service=LLMService(llm,None)
 service_judge=LLMService(llm,None)
 
-async def g_eval(question:str, answer:str)->dict:
+
+async def g_eval(question:str, answer:str,model:str)->dict:
     resp = await client.chat.completions.create(
-        model="openai/gpt-oss-120b:free",
+        model=model,
         messages=[{"role":"user",
             "content": G_EVAL.format(question=question, answer=answer)
         }],
         temperature=0.0,
+        max_tokens=3000,
         response_format={"type":"json_object"}
     )
     return json.loads(resp.choices[0].message.content)
-model_under_test="meta-llama/llama-3.3-70b-instruct:free"#"openai/gpt-oss-120b:free"
+
+model_under_test="openai/gpt-4o-mini"
+
 async def main():
     parser = argparse.ArgumentParser(description="Запуск оценки моделей.")
     parser.add_argument("--golden", type=str, required=True, help="Путь к golden_dataset.json")
@@ -74,26 +78,24 @@ async def main():
     answers=[]
     for item in items:
         question = item["question"]
-        print("start")
         req = ChatRequest( messages=[ Message(role="user", content= question)],
                 model=model_under_test,
                 temperature=0.0,
                 max_tokens=512
             )
         result = await service.complete(req=req)
-        print("end")
         answers.append({
             "id": item["id"],
             "question": question,
             "answer": result.content,
         })
-        break
     # 3. Оценка через G-Eval
     evaluations = []
     for sample in answers:
         evaluation = await g_eval(
             question=sample["question"],
             answer=sample["answer"],
+            model=args.judge
         )
         evaluations.append(
             {
@@ -129,15 +131,20 @@ async def main():
     }
 
     # 6. Сохранение
-    out_dir = Path("eval/runs")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    target_file = os.path.abspath(args.out)
+    target_dir = os.path.dirname(target_file)
+    try:
+        # Автоматически создаем папки (например, eval/runs/), если их еще нет
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
 
-    out_file = out_dir / f"{datetime.now().date()}.json"
+        # Записываем данные в JSON
+        with open(target_file, "w", encoding="utf-8") as f:
+            json.dump(result_json, f, indent=4, ensure_ascii=False)
 
-    with out_file.open("w", encoding="utf-8") as f:
-        json.dump(result_json, f, ensure_ascii=False, indent=2)
-
-    print(f"Результаты сохранены в {out_file}")
+        print(f"Успешно создан файл результатов: {target_file}")
+    except Exception as e:
+        print(f"Ошибка при создании файла: {e}")
 
 
 asyncio.run(main())

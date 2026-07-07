@@ -52,13 +52,13 @@ Evaluation Steps:
 
 Верни ТОЛЬКО JSON следующего формата:
 
-{
+{{
   "reasoning": "пошаговый анализ по Evaluation Steps",
-  "scores": {
+  "scores": {{
     "relevance": N,
     "correctness": N,
     "completeness": N
-  },
+  }},
   "explanation": "одна строка с общим выводом"
-}
+}}
 """
