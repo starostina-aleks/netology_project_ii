@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     # Строгая валидация уровня логирования (только верхний регистр)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    rate_limit_per_min: int = 30
 
 
 @lru_cache
