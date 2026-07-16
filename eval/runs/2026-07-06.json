@@ -1,0 +1,27 @@
+{
+  "run_id": "8d85457f-6300-4718-a28f-f850c37eaf31",
+  "timestamp": "2026-07-06T18:31:35.322587+00:00",
+  "model_under_test": "openai/gpt-oss-20b:free",
+  "judge_model": "openai/gpt-oss-120b:free",
+  "golden_version": 1,
+  "items": [
+    {
+      "id": "faq_003",
+      "question": "Кто является командиром корабля по Уставу ВМФ?",
+      "answer": "",
+      "scores": {
+        "relevance": 1,
+        "correctness": 1,
+        "completeness": 1
+      },
+      "reasoning": "1. Relevance: The question asks who is the commander of a ship according to the Navy Charter. The provided answer is empty, so it does not address the question at all. 2. Correctness: No factual content is present, thus no correctness can be evaluated; the lack of answer means it cannot be correct. 3. Completeness: The answer does not contain any information, so it fails to cover any required aspect of the question.",
+      "explanation": "Ответ полностью отсутствует, поэтому он не релевантен, некорректен и неполон."
+    }
+  ],
+  "aggregates": {
+    "relevance_avg": 1,
+    "correctness_avg": 1,
+    "completeness_avg": 1,
+    "min_correctness": 1
+  }
+}
