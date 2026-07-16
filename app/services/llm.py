@@ -102,12 +102,12 @@ class LLMService:
                 system_prompt=render_system_prompt(),
                 canary=self.canary,
             )
-            clean_text_reg = redact_pii(req.messages[-1].content)
-            #clean_text_presidio = await anyio.to_thread.run_sync(redact_pii_presidio, req.messages[-1].content)
+            # clean_text_reg = redact_pii(req.messages[-1].content)
+            clean_text_presidio = await anyio.to_thread.run_sync(redact_pii_presidio, req.messages[-1].content)
             logger.info(
                 "llm_request_completed",
                 prompt_hash=prompt_hash(req.messages[-1].content),
-                prompt_preview=clean_text_reg,#clean_text_presidio[:120],
+                prompt_preview=clean_text_presidio[:120],
                 input_tokens=resp.usage.prompt_tokens,
                 output_tokens=resp.usage.completion_tokens,
                 latency_ms=round(latency_ms, 2),

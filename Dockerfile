@@ -18,10 +18,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY app/ ./app/
 COPY pyproject.toml uv.lock ./
+COPY wheels/ ./wheels/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+RUN uv pip install ./wheels/ru_core_news_md-3.8.0-py3-none-any.whl
 # ========== STAGE 2: RUNTIME ==========
 FROM python:3.13-slim-bookworm
 
