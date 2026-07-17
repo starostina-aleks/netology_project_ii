@@ -18,6 +18,8 @@ env/
 .ruff_cache/
 .coverage
 htmlcov/
+.embedding_cache/
+
 
 # Secrets
 .env

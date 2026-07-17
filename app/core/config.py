@@ -32,10 +32,15 @@ class Settings(BaseSettings):
     # Строгая валидация уровня логирования (только верхний регистр)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     embedding_model:str=r"F:\embeddings\multilingual-e5-base"
-
-
-
     rate_limit_per_min: int = 30
+    qdrant_url:str = "http://localhost:6333"
+    # Опционально. Если пусто — Qdrant запускается без аутентификации (dev-режим).
+    # В production генерировать через `openssl rand -hex 32`.
+    qdrant_api_key: str
+    # Имя коллекции для документов проекта.
+    qdrant_collection:str= "documents"
+    embedding_dim:int=768
+
 
 
 @lru_cache

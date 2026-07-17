@@ -2,5 +2,5 @@
 .env
 __pycache__/
 .idea/
-.embedding_cache
+.embedding_cache/
 garack_env/

@@ -6,6 +6,8 @@ import hashlib, json
 from app.core.config import get_settings
 import numpy as np
 import time
+
+#dim=768
 class EmbeddingsClient:
     def __init__(
             self,
@@ -98,6 +100,7 @@ async def main():
     model_path = settings.embedding_model
     model = SentenceTransformer(model_path)
     client = EmbeddingsClient(model)
+    print(model.get_embedding_dimension())
 
     execution_time_1 = await _smoke(client)
     print(f"Время выполнения бенчмарка 1 (Холодный): {execution_time_1:.3f} сек.")

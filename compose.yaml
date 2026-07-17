@@ -18,6 +18,8 @@ services:
         condition: service_healthy
       phoenix:
         condition: service_started
+      qdrant:
+        condition: service_healthy
 
     healthcheck:
       test:
@@ -52,6 +54,21 @@ services:
     environment:
       PHOENIX_WORKING_DIR: /data
 
+  qdrant:
+    image: qdrant/qdrant:v1.14.0
+    ports: ["6333:6333", "6334:6334"]
+    volumes: [qdrant_data:/qdrant/storage]
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+      QDRANT__LOG_LEVEL: INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 volumes:
   redis_data:
   phoenix-data:
+  qdrant_data:
