@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
 
 
+    rate_limit_per_min: int = 30
 
 
 @lru_cache

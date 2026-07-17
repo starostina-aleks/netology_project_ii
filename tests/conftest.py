@@ -3,7 +3,7 @@ from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock, MagicMock
 
 from app.deps.providers import get_cache, get_llm
-from app.main import app
+from app.main import app, canary
 import httpx
 from openai import (
         APIConnectionError,
@@ -70,6 +70,15 @@ def mock_cache():
     cache.get = AsyncMock(return_value=None)
     cache.setex = AsyncMock(return_value=True)
     cache.ping = AsyncMock(return_value=True)
+
+    storage = {}
+
+    async def incr(key):
+        storage[key] = storage.get(key, 0) + 1
+        return storage[key]
+
+    cache.incr.side_effect = incr
+    cache.expire = AsyncMock(return_value=True)
     return cache
 
 
@@ -79,6 +88,7 @@ async def client(mock_llm, mock_cache):
     # чтобы health/ready, использующие request.app.state, тоже работали.
     app.state.llm = mock_llm
     app.state.redis = mock_cache
+    app.state.canary = canary
 
     app.dependency_overrides[get_llm] = lambda: mock_llm
     app.dependency_overrides[get_cache] = lambda: mock_cache
