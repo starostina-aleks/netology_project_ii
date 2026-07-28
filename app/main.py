@@ -17,6 +17,7 @@ from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LL
 from app.observability.tracing import setup_tracing
 from app.observability.logging import setup_logging
 from app.core.config import get_settings
+from app.services.vector_store import VectorStore
 
 try:
     from redis.asyncio import Redis
@@ -52,6 +53,27 @@ async def lifespan(app: FastAPI):
             app.state.redis = redis_client
         except Exception as e:
             logger.warning("Redis недоступен (%s) — продолжаем без кеша", e)
+
+    app.state.vector_store=None
+    try:
+        vector_store = VectorStore(
+            url=settings.qdrant_url,
+            api_key=settings.qdrant_api_key,
+            collection=settings.qdrant_collection,
+            dim=settings.embedding_dim,
+        )
+        await vector_store.ensure_collection()
+        app.state.vector_store = vector_store
+        logger.info(
+            "Qdrant подключён: %s, коллекция %s (dim=%d)",
+            settings.qdrant_url,
+            settings.qdrant_collection,
+            settings.embedding_dim,
+        )
+    except Exception as e:
+        logger.warning("Qdrant Недоступен: %s",e)
+
+
 
     yield
 

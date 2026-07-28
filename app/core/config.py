@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     qdrant_url:str = "http://localhost:6333"
     # Опционально. Если пусто — Qdrant запускается без аутентификации (dev-режим).
     # В production генерировать через `openssl rand -hex 32`.
-    qdrant_api_key: str
+    qdrant_api_key: SecretStr | None = None
     # Имя коллекции для документов проекта.
     qdrant_collection:str= "documents"
     embedding_dim:int=768

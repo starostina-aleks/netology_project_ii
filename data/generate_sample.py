@@ -1,7 +1,7 @@
 import tiktoken
 from langchain_text_splitters import  RecursiveCharacterTextSplitter,MarkdownHeaderTextSplitter
 from langchain_core.documents import Document
-
+from datetime import datetime, timezone, timedelta
 
 # Функция подсчета токенов для модели эмбеддингов
 def num_tokens_from_string(string: str, encoding_name: str) -> int:
@@ -52,10 +52,14 @@ def split_text(text, data_info, max_count, chunk_overlap):
 
     source_chunks = []
 
+    now_iso = datetime.now(timezone.utc).isoformat()
+    start=0
     # Обработаем каждый фрагмент текста, полученный после MarkdownHeaderTextSplitter
     for fragment in fragments:
+        #if len(fragment.metadata)==1:
         # MarkdownHeaderTextSplitter сохранил иерархию заголовков в Метаданных - вытащим ее
         level = 0
+
         headers = ['', '', '', '']
         for j in range(1, num_levels + 1):
             header_key = f'H{j}'
@@ -67,17 +71,31 @@ def split_text(text, data_info, max_count, chunk_overlap):
         # унаследуем метаданные от первого сплиттера
         # добавим в метаданные размер чанка в токенах
         for i, chunk in enumerate(splitter.split_text(fragment.page_content)):
+            if start==0:
+                start = 1
+                tenant_id=1
+            else:
+                start=0
+                tenant_id=2
+            date_obj = datetime.now(timezone.utc).date() - timedelta(days=start)
+            now_iso = f"{date_obj.isoformat()}T00:00:00Z"
+
             mdata = fragment.metadata.copy()
             add_hierarchy = f'{header_string}: уровень {level} пункт {i + 1}'
-            new_chunk = ' '.join([chunk, f'\nРаздел: {add_hierarchy}'])
-            mdata["len"] = num_tokens(new_chunk)
+            #new_chunk = ' '.join([chunk, f'\nРаздел: {add_hierarchy}'])
+            #mdata["len"] = num_tokens(new_chunk)
+            mdata["len"] = num_tokens(chunk)
             mdata["source"]=data_info["source"]
             mdata["hierarchy"] = add_hierarchy
-            mdata["category"] = data_info["category"]
-            doc = Document(page_content=new_chunk, metadata=mdata)
+            mdata["category"] = headers[0].split('.')[0]
+            mdata["created_at"] = now_iso
+            mdata["tenant_id"]=tenant_id
+
+            #doc = Document(page_content=new_chunk, metadata=mdata)
+            doc = Document(page_content=chunk, metadata=mdata)
             source_chunks.append(doc)
 
-
+    print(now_iso)
     return source_chunks
 
 def prepare_docs():
@@ -91,8 +109,9 @@ def prepare_docs():
     chunk_overlap=84
     data_info={
         "source": "Korabelny_ustav_VMF_2022.txt",
-        "category":"ВМФ"
     }
     docs = split_text(content,data_info,chunk_size, chunk_overlap)
 
     return docs
+
+prepare_docs()
