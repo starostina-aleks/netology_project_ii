@@ -62,7 +62,6 @@ class EmbeddingsClient:
         result = await self.embed([text], prompt_name="query")
         return result[0]
 
-
     async def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         return await self.embed(texts, prompt_name="passage")
 

@@ -19,7 +19,7 @@ env/
 .coverage
 htmlcov/
 .embedding_cache/
-
+.myscripts/
 
 # Secrets
 .env

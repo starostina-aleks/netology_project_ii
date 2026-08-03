@@ -13,15 +13,6 @@ import asyncio
 
 settings = get_settings()
 
-async def get_filter_results(query_filter:Filter):
-    results = await store_cosine.search(query_vector=vectors[0], top_k=3, query_filter=filter_datetime, )  #
-    print(len(results))
-    for hit in results:
-        print("\n\n")
-        print(hit.payload["text"][:100])
-        print(f"{hit.payload["created_at"]},{hit.score:.3f}")
-
-
 def print_search_results(results, title, show_score=False):
     print(f"\n--- {title} ---")
     print(f"Найдено документов: {len(results)}")

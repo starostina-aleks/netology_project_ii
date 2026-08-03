@@ -4,3 +4,4 @@ __pycache__/
 .idea/
 .embedding_cache/
 garack_env/
+my_scripts/

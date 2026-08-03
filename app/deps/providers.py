@@ -1,10 +1,11 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Request
 
 from app.core.config import Settings, get_settings
 from app.services.llm import LLMService
 from app.services.vector_store import VectorStore
+from app.services.rag import RAGService
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -37,3 +38,8 @@ def get_vector_store(request: Request) -> str:
     return request.app.state.vector_store
 
 VectorStoreDep= Annotated[VectorStore|None, Depends(get_vector_store)]
+
+def get_rag_service(request: Request)->Any:
+    return request.app.state.rag_service
+
+RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]
