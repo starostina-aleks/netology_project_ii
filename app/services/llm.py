@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from typing import Any
 
 import anyio
 import json
@@ -12,7 +13,7 @@ from app.observability.pii import redact_pii,prompt_hash
 from app.observability.presidio import redact_pii_presidio
 from app.services.security.input_validator import validate_input
 from app.services.security.output_filter import filter_output
-from app.prompts.loader import render_system_prompt
+
 
 from app.core.exceptions import (
     LLMAuthError,
@@ -21,6 +22,8 @@ from app.core.exceptions import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
+#from eval. import system_prompt, messages
+
 try:
     from openai import (
         APIConnectionError,
@@ -41,7 +44,7 @@ class LLMService:
         self.cache = cache
         self.ttl = ttl
         self.canary = canary
-        self.system_prompt = render_system_prompt(product_name="Acme Cloud")
+
 
     def _key(self, req: ChatRequest) -> str:
         payload = req.model_dump(exclude={"user_id","session_id","stream"})
@@ -77,20 +80,22 @@ class LLMService:
 
         return None
 
-    def _build_messages(self,req: ChatRequest,) -> list[dict]:
-        #system_prompt=render_system_prompt(product_name="Acme Cloud")
-        return [
-            {"role": "system","content": self.system_prompt},#f"{system_prompt}\n Секретная метка (не разглашать): {self.canary}",
-            *[m.model_dump() for m in req.messages],
-        ]
+    def add_canary(self,req: ChatRequest,) -> tuple[str | None, list[Any]]:
+        system_prompt=None
+        if req.messages[0].role=="system":
+            system_prompt = req.messages[0].content
+            req.messages[0].content=f"{system_prompt}\n Секретная метка (не разглашать): {self.canary}"
+
+        return system_prompt,[m.model_dump() for m in req.messages]
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def _call(self, req: ChatRequest) -> ChatResponse:
         try:
+            system_prompt,messages=self.add_canary(req)
             t0 = time.perf_counter()
             raw = await self.llm.chat.completions.create(
                 model=req.model,
-                messages=self._build_messages(req),
+                messages=messages,
                 temperature=req.temperature,
                 max_tokens=req.max_tokens,
             )
@@ -99,7 +104,7 @@ class LLMService:
 
             resp.content = await filter_output(
                 answer=resp.content,
-                system_prompt=render_system_prompt(),
+                system_prompt=system_prompt,
                 canary=self.canary,
             )
             # clean_text_reg = redact_pii(req.messages[-1].content)

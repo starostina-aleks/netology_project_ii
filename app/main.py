@@ -9,10 +9,12 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from openai import AsyncOpenAI
 from structlog.contextvars import bind_contextvars, clear_contextvars
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import structlog
 import secrets
 
 from app.routers import chat, health, models
+from app.chat.routes import router as chats_router
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
 from app.observability.tracing import setup_tracing
 from app.observability.logging import setup_logging
@@ -53,6 +55,20 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Redis недоступен (%s) — продолжаем без кеша", e)
 
+    app.state.async_engine = None
+    app.state.session_factory = None
+    try:
+        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        app.state.async_engine = engine
+        app.state.session_factory = async_sessionmaker(
+            engine, expire_on_commit=False
+        )
+    except Exception as e:
+        logger.warning(
+            "Postgres engine не создан (%s) — postgres-репозиторий недоступен",
+            e,
+        )
+
     yield
 
     try:
@@ -62,6 +78,11 @@ async def lifespan(app: FastAPI):
     if app.state.redis is not None:
         try:
             await app.state.redis.close()
+        except Exception:
+            pass
+    if app.state.async_engine is not None:
+        try:
+            await app.state.async_engine.dispose()
         except Exception:
             pass
 
@@ -193,3 +214,4 @@ async def handle_validation(request: Request, exc: RequestValidationError):
 app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(models.router)
+app.include_router(chats_router)

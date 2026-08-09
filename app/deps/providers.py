@@ -16,8 +16,6 @@ LLMDep = Annotated[object, Depends(get_llm)]
 def get_cache(request: Request):
     return request.app.state.redis
 
-
-
 CacheDep = Annotated[object, Depends(get_cache)]
 
 def get_canary(request: Request) -> str:

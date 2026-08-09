@@ -1,5 +1,5 @@
 from functools import lru_cache
-
+from pathlib import Path
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Literal
@@ -32,7 +32,12 @@ class Settings(BaseSettings):
     # Строгая валидация уровня логирования (только верхний регистр)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     rate_limit_per_min: int = 30
-
+    # Chat ---------------------------------------------------------------
+    database_url: str = "postgresql+asyncpg://chat:chat@localhost:5432/chat"
+    chat_repository: Literal["json", "postgres"] = "json"
+    chat_storage_dir: Path = Path("./var/chats")
+    chat_context_strategy:Literal["sliding", "hybrid"] = "sliding"
+    chat_context_window: int = 10
 
 @lru_cache
 def get_settings() -> Settings:
