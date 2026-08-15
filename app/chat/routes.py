@@ -50,7 +50,7 @@ async def post_message(
                 user_content=body.content):
                 yield f"data: {json.dumps(chunk,ensure_ascii=False)}\n\n"
         finally:
-            yield "data: [DONE]\n\n"
+            yield 'data: {"type":"done"}\n\n'
 
     return StreamingResponse(
         event_source(),

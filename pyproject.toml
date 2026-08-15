@@ -26,6 +26,8 @@ dependencies = [
     "alembic>=1.18.5",
     "asyncpg>=0.31.0",
     "tiktoken>=0.13.0",
+    "aiogram>=3.27",
+    "aiohttp-socks>=0.11.0",
 ]
 
 [tool.pytest.ini_options]

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     chat_context_strategy:Literal["sliding", "hybrid"] = "sliding"
     chat_context_window: int = 10
 
+
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
