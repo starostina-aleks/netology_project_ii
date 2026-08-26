@@ -5,3 +5,5 @@ __pycache__/
 .embedding_cache/
 garack_env/
 my_scripts/
+data/
+output/

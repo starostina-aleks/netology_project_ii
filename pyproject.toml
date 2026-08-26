@@ -34,6 +34,8 @@ dependencies = [
     "llama-index-llms-openrouter>=0.5.1",
     "pymupdf>=1.28.0",
     "llama-index-llms-openai-like>=0.7.2",
+    "chandra-ocr[hf]>=0.2.0",
+    "nltk>=3.10.0",
 ]
 
 [tool.pytest.ini_options]

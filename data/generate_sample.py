@@ -2,7 +2,7 @@ import tiktoken
 from langchain_text_splitters import  RecursiveCharacterTextSplitter,MarkdownHeaderTextSplitter
 from langchain_core.documents import Document
 from datetime import datetime, timezone, timedelta
-
+import json
 # Функция подсчета токенов для модели эмбеддингов
 def num_tokens_from_string(string: str, encoding_name: str) -> int:
     """Returns the number of tokens in a text string."""
@@ -10,9 +10,8 @@ def num_tokens_from_string(string: str, encoding_name: str) -> int:
     num_tokens = len(encoding.encode(string))
     return num_tokens
 
-
 # Функция разделения текста на чанки заданной длины (в токенах)
-def split_text_fragment(text, max_count, chunk_overlap):
+def split_text_fragment(text):
     # Функция для подсчета количества токенов во фрагменте для сплиттера RecursiveCharacterTextSplitter
     def num_tokens(fragment):
         return num_tokens_from_string(fragment, "cl100k_base")
@@ -21,19 +20,17 @@ def split_text_fragment(text, max_count, chunk_overlap):
     headers_to_split_on = [
         (f"{'#' * i}", f"H{i}") for i in range(1, num_levels + 1)
     ]
-
-    # сначала разделим с помощью MarkdownHeaderTextSplitter
+    # разделим с помощью MarkdownHeaderTextSplitter
     markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on, strip_headers=False)
     fragments = markdown_splitter.split_text(text)
     return fragments
 
+# Функция для подсчета количества токенов во фрагменте для сплиттера RecursiveCharacterTextSplitter
+def num_tokens(fragment):
+    return num_tokens_from_string(fragment, "cl100k_base")
 
 # Функция разделения текста на чанки заданной длины (в токенах)
 def split_text(text, data_info, max_count, chunk_overlap):
-    # Функция для подсчета количества токенов во фрагменте для сплиттера RecursiveCharacterTextSplitter
-    def num_tokens(fragment):
-        return num_tokens_from_string(fragment, "cl100k_base")
-
     num_levels = 3  # Число уровней заголовков, которые будем разделять сплиттером MarkdownHeaderTextSplitter
     headers_to_split_on = [
         (f"{'#' * i}", f"H{i}") for i in range(1, num_levels + 1)
@@ -98,7 +95,7 @@ def split_text(text, data_info, max_count, chunk_overlap):
     print(now_iso)
     return source_chunks
 
-def prepare_docs():
+def prepare_chunks():
     file_ustav_txt='data/Korabelny_ustav_VMF_2022.txt'
 
     with open(file_ustav_txt, "r", encoding="utf-8") as file:
@@ -114,4 +111,25 @@ def prepare_docs():
 
     return docs
 
-prepare_docs()
+def prepare_docs_markdown():
+    file_ustav_txt='data/rag_ustav_txt/Korabelny_ustav1.txt'
+
+    with open(file_ustav_txt, "r", encoding="utf-8") as file:
+        # Читаем содержимое файла
+        content = file.read()
+    print("Извлекаем чанки...")
+    docs = split_text_fragment(content)
+
+    file_ustav_chunks = 'data/rag_ustav_txt/Korabelny_ustav_chunks.txt'
+    to_text=[]
+    print("Готовим json...")
+    with open(file_ustav_chunks, "w", encoding="utf-8") as file:
+        for i,doc in enumerate(docs):
+            chunk_data = {
+                "doc":doc.page_content,
+                "metadata":doc.metadata,
+                "idx":i}
+            file.write(json.dumps(chunk_data, ensure_ascii=False) + "\n")
+    print("Готово")
+
+prepare_docs_markdown()

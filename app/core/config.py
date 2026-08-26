@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = 64
     https_proxy: str
     rag_llm_model: str = "openai/gpt-oss-20b:free"
+    rerank_model:str =r"F:\embeddings\bge-reranker-v2-m3"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -5,10 +5,13 @@ from llama_index.core import PromptTemplate
 from llama_index.llms.openai_like import OpenAILike
 from app.core.config import get_settings, Settings as AppSettings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core.schema import BaseNode
 from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.postprocessor import SentenceTransformerRerank
 import logging
 import asyncio
 import httpx
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +26,18 @@ QA_PROMPT = PromptTemplate(
 )
 
 class RAGService:
-    def __init__(self,settings:AppSettings)->None:
+    def __init__(self,settings:AppSettings,nodes:list[BaseNode] =None,embed_model=None,splitter=None)->None:
         self._settings = settings
-        model_path = settings.embedding_model
-        Settings.embed_model = HuggingFaceEmbedding(
-            model_name=model_path,
-            device="cpu",
-            embed_batch_size=8,
-        )
+
+        if embed_model is None:
+            model_path = settings.embedding_model
+            embed_model = HuggingFaceEmbedding(
+                model_name=model_path,
+                device="cpu",
+                embed_batch_size=8,
+            )
+
+        Settings.embed_model = embed_model
 
         sync_client = httpx.Client(proxy=settings.https_proxy)
         async_client = httpx.AsyncClient(proxy=settings.https_proxy)
@@ -42,14 +49,26 @@ class RAGService:
             http_client=sync_client,
             async_http_client=async_client
         )
-        Settings.node_parser = SentenceSplitter(
-            chunk_size=settings.rag_chunk_size,
-            chunk_overlap=settings.rag_chunk_overlap,
-        )
-        self._aclient = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key.get_secret_value())
-        self._client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key.get_secret_value())
+
+        if splitter is None:
+            Settings.node_parser = SentenceSplitter(
+                chunk_size=settings.rag_chunk_size,
+                chunk_overlap=settings.rag_chunk_overlap,
+            )
+        else:
+            Settings.node_parser =splitter
+
+
+        self._aclient = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key.get_secret_value(), timeout=60.0,)
+        self._client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key.get_secret_value(), timeout=60.0,)
         self._index:VectorStoreIndex | None=None
         self._engine=None
+        self._retriever=None
+        self.nodes=nodes
+        self._reranker = SentenceTransformerRerank(
+            model=settings.rerank_model,
+            top_n=settings.rag_top_k
+        )
 
     def build(self)->None:
         vector_store = QdrantVectorStore(aclient=self._aclient,
@@ -69,18 +88,43 @@ class RAGService:
             )
         else:
             storage = StorageContext.from_defaults(vector_store=vector_store)
-            documents=SimpleDirectoryReader(str(self._settings.rag_data_dir),recursive=True).load_data()
-            self._index=VectorStoreIndex.from_documents(storage_context=storage,documents=documents)
-            logger.info(
-                "RAG: проиндексировано %d документов в коллекцию %s",
-                len(documents),
-                self._settings.rag_collection,
-            )
+
+            if self.nodes:
+
+                self._index = VectorStoreIndex(
+                nodes=self.nodes,
+                storage_context=storage
+                )
+                logger.info(
+                    "RAG: проиндексировано %d чанков в коллекцию %s",
+                    len(self.nodes),
+                    self._settings.rag_collection,
+                )
+            else:
+                documents=SimpleDirectoryReader(str(self._settings.rag_data_dir),recursive=True).load_data()
+                self._index=VectorStoreIndex.from_documents(storage_context=storage,documents=documents)
+                logger.info(
+                    "RAG: проиндексировано %d документов в коллекцию %s",
+                    len(documents),
+                    self._settings.rag_collection,
+                )
+
+
 
         self._engine=self._index.as_query_engine(
             similarity_top_k=self._settings.rag_top_k,
             text_qa_template=QA_PROMPT,
         )
+
+    async def get_nodes(self):
+        scroll_results, _ =await self._aclient.scroll(
+        collection_name=self._settings.rag_collection,
+        with_payload=True,
+        with_vectors=False,
+        limit=10000
+        )
+        return scroll_results
+
 
     async def answer(self,query)->dict|None:
         if self._engine is None:
@@ -100,6 +144,41 @@ class RAGService:
                 for n in response.source_nodes
             ],
             }
+
+    def retrieve(self,query,top_k:int=None):
+        if self._index is None:
+            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
+        ret_top_k = top_k if top_k is not None else self._settings.rag_top_k
+        retriever = self._index.as_retriever(
+            similarity_top_k=ret_top_k)
+        return retriever.retrieve(query)
+
+    def rerank(self, query: str):
+        raw_nodes = self.retrieve(query=query, top_k=20)
+        ranked = self._reranker.postprocess_nodes(nodes=raw_nodes, query_str=query)
+        return ranked
+
+    def get_prev_text(self,prev_node_id):
+        qdrant_client = self._index.vector_store.client
+        collection_name = self._index.vector_store.collection_name
+        results = qdrant_client.retrieve(
+            collection_name=collection_name,
+            ids=[prev_node_id]  # Передаем ID предыдущего чанка
+        )
+        if results:
+            node_content=json.loads(results[0].payload.get("_node_content"))
+            relationships = node_content.get("relationships", {})
+
+            # Проверяем строковый ключ "2" или числовой (зависит от сериализации LlamaIndex)
+            prev_relation = relationships.get("2") or relationships.get(2)
+
+            if prev_relation and "node_id" in prev_relation:
+                current_id = prev_relation["node_id"]
+            else:
+                # Если связи PREVIOUS больше нет, мы дошли до самого начала документа
+                current_id = None
+            return current_id,node_content.get("text")
+        return None,""
 
     async def close(self) -> None:
         try:

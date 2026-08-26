@@ -6,7 +6,7 @@ from tqdm.asyncio import tqdm
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, VectorParams,PointStruct
 from app.core.config import get_settings
-from data.generate_sample import prepare_docs
+from data.generate_sample import prepare_chunks
 from sentence_transformers import SentenceTransformer
 from app.services.embeddings import EmbeddingsClient
 from app.services.vector_store import VectorStore
@@ -54,15 +54,14 @@ async def main():
             total,
         )
 
-        docs = prepare_docs()
-        logger.info("Загружаю %d документов", len(docs))
-        contents = [doc.page_content for doc in docs]
+        chunks = prepare_chunks()
+        logger.info("Загружаю %d документов", len(chunks))
+        contents = [chunk.page_content for chunk in chunks]
         logger.info("Генерация эмбеддингов...")
         vectors = await embedding.embed_documents(contents)
-
-        if len(vectors) != len(docs):
+        if len(vectors) != len(chunks):
             raise RuntimeError(
-                f"Получено {len(vectors)} embeddings на {len(docs)} документов"
+                f"Получено {len(vectors)} embeddings на {len(chunks)} документов"
             )
 
         if vectors and len(vectors[0]) != settings.embedding_dim:
@@ -70,9 +69,8 @@ async def main():
                 f"Embedding dim={len(vectors[0])} != EMBEDDING_DIM={settings.embedding_dim}. "
                 f"Сверьте имя модели и значение EMBEDDING_DIM в .env."
             )
-
         points = []
-        for i, doc in enumerate(docs):
+        for i, doc in enumerate(chunks):
             unique_string = f"{doc.metadata['source']}_{i}"
             point = PointStruct(
                 id=uuid.uuid5(NAMESPACE, unique_string).hex,
