@@ -43,6 +43,38 @@ async def test_send_message() -> None:
         deltas=[e["delta"] for e in events if e.get("type") == "token"]
         assert " ".join(deltas) == "Hi Alex"
 
+@pytest.mark.asyncio
+async def test_send_message_multipart() -> None:
+    sse_body=(
+        b'data:{"type":"token","delta":"ok"}\n\n'
+        b'data:{"type":"done"}\n\n'
+        )
+    captured_body:dict={}
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_body["body"] = request.content
+        return httpx.Response(
+            200,
+            content=sse_body,
+            headers={"Content-Type": "text/event-stream"}
+        )
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport,base_url="http://ч") as c:
+        client = BackendClient(c)
+        events=[d async for d in client.send_message(
+            uuid4(),
+            content="describe",
+            media=b'1111',
+            mime="image/jpeg",
+            filename="media.jpeg",
+        )]
+        assert all(isinstance(e,dict) for e in events)
+        deltas=[e["delta"] for e in events if e.get("type") == "token"]
+        assert " ".join(deltas) == "ok"
+        body=captured_body["body"]
+        assert b"describe" in body
+        assert b"image/jpeg" in body
+        assert b"media.jpeg" in body
+
 # clear_messages шлёт DELETE на правильный URL
 @pytest.mark.asyncio
 async def test_clear_messages() -> None:

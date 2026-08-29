@@ -1,11 +1,12 @@
 import json
 
-from fastapi import APIRouter,Query, HTTPException
+from fastapi import APIRouter,Query, HTTPException,Form,UploadFile,File,Request
 from app.chat.deps import ChatServiceDep
 from app.chat.domain import Chat,ChatMessage
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from uuid import UUID
+from app.services.notifier import notify_user
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -40,14 +41,19 @@ class MessageIn(BaseModel):
 )
 async def post_message(
         chat_id: UUID,
-        body: MessageIn,
-        chat_service:ChatServiceDep
+        chat_service:ChatServiceDep,
+        content:str=Form(""),
+        media:UploadFile|None=File(None)
 )-> StreamingResponse:
+    print("CONTENT:", repr(content))
+    print("MEDIA:", media)
     async def event_source():
         try:
             async for chunk in chat_service.send_message(
                 chat_id=chat_id,
-                user_content=body.content):
+                user_content=content,
+                media=media,
+            ):
                 yield f"data: {json.dumps(chunk,ensure_ascii=False)}\n\n"
         finally:
             yield 'data: {"type":"done"}\n\n'
@@ -57,6 +63,18 @@ async def post_message(
         media_type="text/event-stream",
         headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
+
+@router.post(
+    "/{chat_id}/system-message",
+)
+async def post_system_message(
+        chat_id: UUID,
+        chat_service:ChatServiceDep,
+        text:str,
+        notify:bool = True,
+):
+    chat = await chat_service.get_chat(chat_id=chat_id)
+    await notify_user(chat_id_tg=chat.owner_external_id, text=text)
 
 @router.get("/{chat_id}/messages",
             response_model=list[ChatMessage])

@@ -16,6 +16,9 @@ class BotSettings(BaseSettings):
     backend_url: str = "http://app:8000"
     request_timeout: float = 30.0
     proxy_url: str
+    bot_api_port: int = 9000
+    bot_url: str = "http://bot:9000"
+    internal_token: SecretStr = SecretStr("change-me-internal")
 
     
 

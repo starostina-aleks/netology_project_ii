@@ -215,3 +215,4 @@ app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(models.router)
 app.include_router(chats_router)
+

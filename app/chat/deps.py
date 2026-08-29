@@ -6,7 +6,7 @@ from app.core.config import get_settings
 from app.chat.repository import ChatRepository
 from app.chat.repositories.json_repo import JsonChatRepository
 from app.chat.repositories.pg_repo import PostgresChatRepository
-from app.deps.providers import LLMServiceDep,SettingsDep
+from app.deps.providers import LLMDep,SettingsDep
 from typing import Annotated
 
 
@@ -29,7 +29,7 @@ ChatRepositoryDep = Annotated[ChatRepository, Depends(get_repository)]
 
 def get_chat_service(
         repo: ChatRepositoryDep,
-        llm:LLMServiceDep,
+        llm:LLMDep,
         settings:SettingsDep,
 )->ChatService:
     return ChatService(repo, llm,settings.chat_context_strategy, settings.chat_context_window)
