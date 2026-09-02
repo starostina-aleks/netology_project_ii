@@ -12,7 +12,7 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 import structlog
 import secrets
 
-from app.routers import chat, health, models,rag
+from app.routers import chat, health, models,rag, documents
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
 from app.observability.tracing import setup_tracing
 from app.observability.logging import setup_logging
@@ -73,10 +73,24 @@ async def lifespan(app: FastAPI):
         )
     except Exception as e:
         logger.warning("Qdrant Недоступен: %s",e)
+    app.state.embed_model=None
     app.state.rag_service = None
+    app.state.ingestion = None
     try:
         from app.services.rag import RAGService
-        rag_service = RAGService(settings)
+        from app.services.ingestion import IngestionService
+        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+        model_path = settings.embedding_model
+        app.state.embed_model = HuggingFaceEmbedding(
+            model_name=model_path,
+            device="cpu",
+            embed_batch_size=8,
+        )
+        ingestion = IngestionService(settings,embed_model=app.state.embed_model)
+        app.state.ingestion = ingestion
+        if ingestion.is_collection_empty():
+            await asyncio.to_thread(ingestion.ingest_all())
+        rag_service = RAGService(settings,embed_model=app.state.embed_model)
         await asyncio.to_thread(rag_service.build)
         app.state.rag_service=rag_service
         logger.info(
@@ -84,7 +98,14 @@ async def lifespan(app: FastAPI):
             settings.rag_collection
         )
     except Exception as e:
-        logger.warning("RAG Недоступен: %s",e)
+        logger.warning("RAG/индексация недоступны : %s - /rag/query и /document вернут 503",e)
+    try:
+        logger.info(
+            "Ingestion доступен, коллекция %s ",
+            settings.rag_collection
+        )
+    except Exception as e:
+        logger.warning("Ingestion Недоступен: %s",e)
 
     yield
 
@@ -237,3 +258,4 @@ app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(models.router)
 app.include_router(rag.router)
+app.include_router(documents.router)

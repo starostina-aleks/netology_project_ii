@@ -36,6 +36,8 @@ dependencies = [
     "llama-index-llms-openai-like>=0.7.2",
     "chandra-ocr[hf]>=0.2.0",
     "nltk>=3.10.0",
+    "unstructured>=0.27.1",
+    "fastembed>=0.8.0",
 ]
 
 [tool.pytest.ini_options]

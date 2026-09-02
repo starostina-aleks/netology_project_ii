@@ -45,11 +45,14 @@ class Settings(BaseSettings):
     rag_collection:str="rag_block_03"
     rag_data_dir:Path=Path("data/rag_ustav")
     rag_top_k:int=3
+    rag_retrieved_top_k:int=10
     rag_chunk_size: int = 512
     rag_chunk_overlap: int = 64
     https_proxy: str
     rag_llm_model: str = "openai/gpt-oss-20b:free"
     rerank_model:str =r"F:\embeddings\bge-reranker-v2-m3"
+    rag_use_reranker: bool = True
+    rag_rerank_top_k:int =5
 
 
 @lru_cache

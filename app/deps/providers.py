@@ -6,6 +6,7 @@ from app.core.config import Settings, get_settings
 from app.services.llm import LLMService
 from app.services.vector_store import VectorStore
 from app.services.rag import RAGService
+from app.services.ingestion import IngestionService
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -34,12 +35,21 @@ def get_llm_service(
 
 LLMServiceDep = Annotated[LLMService, Depends(get_llm_service)]
 
-def get_vector_store(request: Request) -> str:
+def get_vector_store(request: Request):
     return request.app.state.vector_store
 
 VectorStoreDep= Annotated[VectorStore|None, Depends(get_vector_store)]
+
+def get_embed_model(request: Request):
+    return request.app.state.embed_model
+EmbedModelDep = Annotated[Any, Depends(get_embed_model)]
 
 def get_rag_service(request: Request)->Any:
     return request.app.state.rag_service
 
 RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]
+
+def get_ingestion_service(request: Request)->Any:
+    return request.app.state.ingestion
+IngestionDep = Annotated[IngestionService, Depends(get_ingestion_service)]
+
