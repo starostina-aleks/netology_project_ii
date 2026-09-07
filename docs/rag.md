@@ -118,4 +118,43 @@
 * **Оценка:** Релевантно
 * **Гипотеза:** Данных действительно нет
 
+# Архитектура 
+```mermaid
+graph LR
+    subgraph Ingestion ["Офлайн-контур (Ingestion)"]
+        A["Индексация документов<br>(фоновый процесс, свой SLA)"]
+    end
+
+    subgraph VectorDB ["Векторная БД"]
+        B[("Qdrant")]
+    end
+
+    subgraph Query ["Онлайн-контур (Query)"]
+        C["Запрос → поиск → ответ<br>(низкая задержка, основной API)"]
+    end
+
+    subgraph Analytics ["Аналитика"]
+        D["Обратная связь<br>и аналитика"]
+    end
+
+    A -->|пишет| B
+    B -->|читает| C
+    C -.->|оценки, пробелы в знаниях| D
+
+    style Ingestion fill:#fffde7,stroke:#ffd54f,stroke-width:2px;
+    style VectorDB fill:#e8f5e9,stroke:#4caf50,stroke-width:2px;
+    style Query fill:#ede7f6,stroke:#5e35b1,stroke-width:2px;
+    style Analytics fill:#e0f2f1,stroke:#009688,stroke-width:2px;
+```
+
+### Re-ranker
+* **Модель:** `bge-reranker-v2-m3`
+
+### Threshold для Refusal
+* **Порог отсечки:** `0.35` (для нормализованного скора BGE Re-ranker)
+
+### Перечень Endpoints
+**`POST /rag/query`** — принимает текстовый запрос пользователя, ищет релевантные чанки в Qdrant, генерирует ответ строго по контексту базы знаний, логирует результат в репозиторий аналитики и возвращает полный JSON-ответ с источниками.
+
+
 

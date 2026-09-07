@@ -10,6 +10,7 @@ from llama_index.core.schema import BaseNode, NodeWithScore
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.storage.docstore import SimpleDocumentStore
+from app.services.condense import condense_question
 import logging
 import asyncio
 import httpx
@@ -53,7 +54,7 @@ def build_sources(source_nodes:list[NodeWithScore]) -> list[dict]:
             "text": node.text[:300],
             "source": node.metadata.get("source_file"),
             "page": node.metadata.get("source"),
-            "score": round(node.score or 0.0, 3)
+            "score": round(float(node.score or 0.0), 3)
         })
     return sources
 
@@ -95,7 +96,7 @@ class RAGService:
         self._retriever=None
         self.nodes=nodes
         self._reranker = SentenceTransformerRerank(
-            model=settings.rerank_model,
+            model=settings.rag_rerank_model,
             top_n=settings.rag_top_k
         )
 
@@ -154,37 +155,46 @@ class RAGService:
             text_qa_template=QA_PROMPT,
         )
 
-    async def get_nodes(self):
-        scroll_results, _ =await self._aclient.scroll(
-        collection_name=self._settings.rag_collection,
-        with_payload=True,
-        with_vectors=False,
-        limit=10000
-        )
-        return scroll_results
-
-
     async def answer(self,query:str)->dict|None:
-        if self._engine is None:
+        if self._retriever is None:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
         nodes=await self._retrieve(query)
         return await self._synthesize(query=query,nodes=nodes)
-        '''
-        response=await self._engine.aquery(query)
-        top_score = max((node.score or 0.0 for node in response.source_nodes),default=0.0)
-        answer_text = str(response)
-        if top_score < self._settings.rag_score_threshold:
-            answer_text = "В базе знаний нет ответа на этот вопрос."
-        return {
-            "answer": answer_text,
-            "top_score": round(top_score, 3),
-            "sources": [
-            {"text": n.text[:300], "source": n.metadata.get("file_name"),
-            "score": round(n.score, 3)}
-                for n in response.source_nodes
-            ],
+
+    async def generate_rag_context(
+            self,
+            question:str,
+            history: list[dict],
+            use_condense:bool=True
+    )->dict|None:
+        if self._retriever is None:
+            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
+        search_query = question
+        if use_condense:
+            search_query = await condense_question(
+                self._llm,
+                question,
+                history,
+                model=self._settings.model_condense,
+            )
+        nodes=await self._retrieve(search_query)
+        top_score = max((sn.score or 0.0 for sn in nodes), default=0.0)
+        if not nodes or top_score < self._settings.rag_score_threshold:
+            return {
+                "text": REFUSAL_TEXT,
+                "top_score": round(top_score, 3),
+                "sources": [],
+                "confident": False
             }
-        '''
+        rag_context = QA_PROMPT.format(context_str=_numbered_context(nodes),
+                                        query_str=question)
+        sources = build_sources(nodes)
+        return {
+            "text": rag_context,
+            "top_score": round(top_score, 3),
+            "sources": sources,
+            "confident": True
+        }
 
     async def _synthesize(self,query:str,nodes:list[NodeWithScore])->dict:
         top_score=max((sn.score or 0.0 for sn in nodes),default=0.0)
@@ -193,6 +203,7 @@ class RAGService:
                 "answer": REFUSAL_TEXT,
                 "top_score": round(top_score, 3),
                 "sources": [],
+                "confident":False
             }
         '''
         response= await Settings.llm.acomplete(
@@ -210,22 +221,13 @@ class RAGService:
             temperature=0.3,
             max_tokens=4000,
         )
-
         sources=build_sources(nodes)
-
         return {
             "answer": parse_citations(str(response),sources),
             "top_score": round(top_score, 3),
             "sources": sources,
+            "confident": False
         }
-
-    def retrieve(self,query:str,top_k:int=None):
-        if self._index is None:
-            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
-        ret_top_k = top_k if top_k is not None else self._settings.rag_top_k
-        retriever = self._index.as_retriever(
-            similarity_top_k=ret_top_k)
-        return retriever.retrieve(query)
 
     async def _retrieve(self,query:str)->list[NodeWithScore]:
         nodes=await self._retriever.aretrieve(query)
@@ -237,6 +239,22 @@ class RAGService:
         raw_nodes = self.retrieve(query=query, top_k=20)
         ranked = self._reranker.postprocess_nodes(nodes=raw_nodes, query_str=query)
         return ranked
+
+    async def get_nodes(self):
+        scroll_results, _ =await self._aclient.scroll(
+        collection_name=self._settings.rag_collection,
+        with_payload=True,
+        with_vectors=False,
+        limit=10000
+        )
+        return scroll_results
+    def retrieve(self,query:str,top_k:int=None):
+        if self._index is None:
+            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
+        ret_top_k = top_k if top_k is not None else self._settings.rag_top_k
+        retriever = self._index.as_retriever(
+            similarity_top_k=ret_top_k)
+        return retriever.retrieve(query)
 
     def get_prev_text(self,prev_node_id):
         qdrant_client = self._index.vector_store.client

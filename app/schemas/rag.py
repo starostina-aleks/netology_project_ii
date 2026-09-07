@@ -14,3 +14,4 @@ class RAGAnswer(BaseModel):
     answer: str
     top_score: float
     sources: list[RAGSource]
+    confident: bool

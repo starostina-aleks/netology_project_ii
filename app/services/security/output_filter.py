@@ -91,10 +91,10 @@ async def is_safe_llm(text: str) -> bool:
 async def filter_output(answer: str, system_prompt: str, canary: str) -> str:
 
     normalized_answer = _normalize_spaces(answer)
-    normalized_prompt = _normalize_spaces(system_prompt)
-
-    if normalized_prompt and normalized_prompt in normalized_answer:
-        raise ValueError("system prompt leakage detected")
+    if system_prompt is not None:
+        normalized_prompt = _normalize_spaces(system_prompt)
+        if normalized_prompt and normalized_prompt in normalized_answer:
+            raise ValueError("system prompt leakage detected")
 
     if canary and canary in answer:
         raise ValueError("system_prompt leakage: canary detected")

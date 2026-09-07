@@ -41,6 +41,7 @@ docs/
 !README.md
 notebooks/
 data/
+var/
 
 # Docker
 Dockerfile
