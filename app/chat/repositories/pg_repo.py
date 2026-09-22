@@ -16,10 +16,11 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.chat.domain import Chat, ChatMessage
+from app.chat.domain import Chat, ChatMessage, SystemPrompt
 from app.chat.repositories.pg_models import (
     ChatMessageRow,
-    ChatRow
+    ChatRow,
+    SystemPromptRow,
 )
 
 
@@ -60,6 +61,7 @@ class PostgresChatRepository:
         self,
         owner_external_id: str,
         interface: str,
+        system_prompt: str | None = None,
     ) -> Chat:
         stmt = (
             select(ChatRow)
@@ -73,7 +75,7 @@ class PostgresChatRepository:
         row = (await self.session.execute(stmt)).scalar_one_or_none()
         if row is not None:
             return Chat.model_validate(row, from_attributes=True)
-        return await self.create_chat(owner_external_id, interface)
+        return await self.create_chat(owner_external_id, interface,system_prompt)
 
     async def append_message(
         self, chat_id: UUID, message: ChatMessage
@@ -121,3 +123,24 @@ class PostgresChatRepository:
         )
         await self.session.execute(stmt)
         await self.session.commit()
+
+class PostgresSystemPromptRepository:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession] | None) :
+        self.session_factory = session_factory
+
+    async def list_active(self)->list[SystemPrompt]:
+        if self.session_factory is None:
+            return []
+        stmt = (select(SystemPromptRow)
+        .where(
+            SystemPromptRow.active.is_(True),
+            SystemPromptRow.traffic_pct>0
+            )
+            .order_by(SystemPromptRow.created_at.desc())
+        )
+        async with self.session_factory() as session:
+            rows=(await session.execute(stmt)).scalars().all()
+        return [
+            SystemPrompt.model_validate(row, from_attributes=True) for row in rows
+        ]
+

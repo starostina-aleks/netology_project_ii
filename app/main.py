@@ -14,6 +14,7 @@ import structlog
 import secrets
 
 from app.routers import chat, health, models
+from app.admin.routes import router as admin_router
 from app.chat.routes import router as chats_router
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
 from app.observability.tracing import setup_tracing
@@ -215,4 +216,4 @@ app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(models.router)
 app.include_router(chats_router)
-
+app.include_router(admin_router)

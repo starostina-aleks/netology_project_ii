@@ -81,6 +81,7 @@ class JsonChatRepository:
 
     async def get_or_create_chat(
             self, owner_external_id: str, interface: str,
+            system_prompt: str | None = None,
     ) -> Chat:
         logger.info(f"get_or_create_chat chat with owner_external_id {owner_external_id}")
         path = self.base_dir / "chats"
@@ -100,7 +101,7 @@ class JsonChatRepository:
                 continue
             if chat.owner_external_id == owner_external_id and chat.interface == interface:
                 return chat
-        return await self.create_chat(owner_external_id, interface)
+        return await self.create_chat(owner_external_id, interface,system_prompt)
 
 
 

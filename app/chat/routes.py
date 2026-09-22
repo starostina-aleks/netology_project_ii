@@ -1,12 +1,17 @@
 import json
 
-from fastapi import APIRouter,Query, HTTPException,Form,UploadFile,File,Request
+from fastapi import APIRouter,Query, HTTPException,Form,UploadFile,File,Request,Header
+from sqlalchemy import text
+from sqlalchemy.sql.annotation import Annotated
+
 from app.chat.deps import ChatServiceDep
 from app.chat.domain import Chat,ChatMessage
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from uuid import UUID
 from app.services.notifier import notify_user
+from typing import Annotated,Literal
+from app.deps.providers import SessionFactoryDep
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -17,6 +22,12 @@ class CreateChatIn(BaseModel):
 
 class CreateChatOut(BaseModel):
     chat_id: UUID
+
+FeedbackValue=Literal["up","down"]
+class FeedbackIn(BaseModel):
+   owner_external_id: str
+   value: FeedbackValue
+
 
 
 @router.post(
@@ -43,10 +54,24 @@ async def post_message(
         chat_id: UUID,
         chat_service:ChatServiceDep,
         content:str=Form(""),
-        media:UploadFile|None=File(None)
+        media:UploadFile|None=File(None),
+        owner_external_id: Annotated[
+            str|None,Header(alias="X-Owner-External-Id")
+                ]=None,
 )-> StreamingResponse:
-    print("CONTENT:", repr(content))
-    print("MEDIA:", media)
+
+    mod_result=await chat_service.check_input(
+        content,owner_external_id=owner_external_id
+    )
+    if not mod_result.allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code":"moderation blocked",
+                "categories":mod_result.categories,
+                "layer":mod_result.layer,
+            }
+        )
     async def event_source():
         try:
             async for chunk in chat_service.send_message(
@@ -105,3 +130,31 @@ async def get_chat(
     if chat is None:
         raise HTTPException(status_code=404,detail="chat not found")
     return chat
+
+@router.post(
+    "/{chat_id}/messages/{msg_id}/feedback",
+    summary="Оценка ответа: up/down",
+)
+async def post_feedback(
+        chat_id:UUID,
+        msg_id:UUID,
+        body:FeedbackIn,
+        session_factory:SessionFactoryDep
+)->dict:
+    if session_factory is None:
+        raise HTTPException(status_code=503,detail="feedback requires postgres")
+    print("POST FEEDBACK",msg_id,body.owner_external_id,body.value)
+    async with session_factory() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO message_feedback (message_id, owner_external_id,value,created_at) 
+                VALUES (:m,:o,:v,NOW())
+                ON CONFLICT (owner_external_id, message_id) DO NOTHING
+                """
+            ),
+            {"m":msg_id, "o":body.owner_external_id, "v":body.value},
+        )
+        await session.commit()
+    return {"status":"ok"}
+

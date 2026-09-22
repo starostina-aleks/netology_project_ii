@@ -27,6 +27,8 @@ class ChatRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         TimestampTZ, default=lambda: datetime.now(UTC)
     )
+    handoff_status: Mapped[str] = mapped_column(nullable=False, server_default='active')
+
 
 class ChatMessageRow(Base):
     __tablename__ = "chat_messages"
@@ -54,4 +56,15 @@ Index(
         ChatMessageRow.created_at.desc(),
         postgresql_where=ChatMessageRow.deleted_at.is_(None),
 )
+
+class SystemPromptRow(Base):
+    __tablename__ = "system_prompts"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    version: Mapped[str]
+    body: Mapped[str]
+    active:Mapped[bool] = mapped_column(default=False)
+    traffic_pct: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        TimestampTZ, default=lambda: datetime.now(UTC)
+    )
 

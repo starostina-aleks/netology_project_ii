@@ -6,6 +6,12 @@ services:
     environment:
       LOG_LEVEL: DEBUG
 
+  bot:
+    volumes:
+      - ./bot:/app/bot:ro
+    environment:
+      LOG_LEVEL: DEBUG
+
   redis:
     ports:
       - "6379:6379"

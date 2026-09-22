@@ -5,9 +5,10 @@ from app.chat.service import ChatService
 from app.core.config import get_settings
 from app.chat.repository import ChatRepository
 from app.chat.repositories.json_repo import JsonChatRepository
-from app.chat.repositories.pg_repo import PostgresChatRepository
-from app.deps.providers import LLMDep,SettingsDep
+from app.chat.repositories.pg_repo import PostgresChatRepository, PostgresSystemPromptRepository
+from app.deps.providers import LLMDep,SettingsDep,SessionFactoryDep
 from typing import Annotated
+from app.moderation.service import ModerationService
 
 
 async def get_repository(
@@ -27,11 +28,31 @@ async def get_repository(
 
 ChatRepositoryDep = Annotated[ChatRepository, Depends(get_repository)]
 
+
+
 def get_chat_service(
         repo: ChatRepositoryDep,
         llm:LLMDep,
         settings:SettingsDep,
+        session_factory:SessionFactoryDep
 )->ChatService:
-    return ChatService(repo, llm,settings.chat_context_strategy, settings.chat_context_window)
+    moderation = ModerationService(
+    llm_client=llm,
+    use_openai_moderation=settings.moderation_use_openai,
+    session_factory=session_factory
+    )
+    prompt_repo=(
+        PostgresSystemPromptRepository(session_factory)
+        if session_factory is not None
+        else None
+    )
+    return ChatService(
+        repository=repo,
+        llm_client=llm,
+        chat_context_window=settings.chat_context_window,
+        chat_context_strategy=settings.chat_context_strategy,
+        moderation=moderation,
+        prompt_repo=prompt_repo
+    )
 
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]

@@ -55,6 +55,29 @@ services:
     environment:
       PHOENIX_WORKING_DIR: /data
 
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: llm-service:dev
+    container_name: chat-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    # В environment — только сетевые host'ы для docker-сети. Остальное
+    # (BOT_TOKEN, ADMIN_TOKEN, INTERNAL_TOKEN, BOT_ADMIN_IDS, ADMIN_CHAT_ID,
+    # BOT_API_PORT) читает pydantic-settings из .env.
+    environment:
+      BACKEND_URL: http://app:8000
+    # /notify нужен только из app-сервиса по внутренней сети compose,
+    # наружу не пробрасываем. Для отладки с хоста — добавить `ports: ["9000:9000"]`.
+    expose:
+      - "9000"
+    depends_on:
+      app:
+        condition: service_healthy
+    command: ["python", "-m", "bot"]
+
   postgres:
     image: postgres:16
     container_name: llm-postgres

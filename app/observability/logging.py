@@ -1,6 +1,7 @@
 import structlog
 
 def setup_logging(level: str | int = "INFO") -> None:
+    print(f"level:{level}")
     structlog.configure(
        processors=[
 

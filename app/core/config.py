@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     bot_url: str = "http://bot:9000"
     internal_token: SecretStr = SecretStr("change-me-internal")
 
+    #Admin====================================================
+    admin_token: SecretStr = SecretStr("change-me-admin")
+    # Включить OpenAI Moderation API (layer 2 каскада). Если False —
+    # только regex-блоклист.
+    moderation_use_openai: bool = True
+
+
 
 
 

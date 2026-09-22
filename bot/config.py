@@ -19,6 +19,17 @@ class BotSettings(BaseSettings):
     bot_api_port: int = 9000
     bot_url: str = "http://bot:9000"
     internal_token: SecretStr = SecretStr("change-me-internal")
+    admin_chat_id: int | None = None
+    admin_token: SecretStr = SecretStr("change-me-admin")
+    bot_admin_ids: Annotated[list[int], NoDecode()] = []
+
+    @field_validator("bot_admin_ids", mode="before")
+    @classmethod
+    def _parse_ids(cls  ,v):
+        if isinstance(v,str):
+            return [int(x) for x in v.split(",") if x.strip()]
+        return v
+
 
     
 

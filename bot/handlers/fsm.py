@@ -1,3 +1,5 @@
+import asyncio
+
 from aiogram import F,Router
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -5,6 +7,10 @@ from bot.keyboards.inline import  topic_kb
 from aiogram.fsm.context import FSMContext
 from bot.states import AskFlow
 from bot.services.backend_client import BackendClient
+from bot.services.error_handling import handle_backend_error
+from bot.services.typing import typing_until
+from bot.services.streaming import stream_to_bot
+
 router=Router()
 
 @router.message(Command('ask'))
@@ -39,15 +45,22 @@ async def on_question(
         owner_external_id=str(message.chat.id),
         interface="telegram"
     )
-    buffer = ""
-    events=backend.send_message(chat_id,prompt)
-    async for event in events:
-        print(event)
-        etype = event.get("type")
-        if etype == "token":
-            buffer += event.get("delta", "")
-            await sent_message.edit_text(buffer)
-    await state.clear()
+
+    stop = asyncio.Event()
+    typing_task = asyncio.create_task(
+        typing_until(message.bot, message.chat.id, stop))
+    try:
+        events = backend.send_message(
+            chat_id=chat_id,
+            content=prompt,
+            owner_external_id=str(message.chat.id),
+        )
+        await stream_to_bot(message, events)
+    except Exception as exc:
+        await handle_backend_error(message, exc)
+    finally:
+        stop.set()
+        await typing_task
 
 @router.message(Command('cancel'))
 async def cmd_cancel(message:Message,state:FSMContext):
