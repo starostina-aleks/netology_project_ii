@@ -28,7 +28,8 @@ import asyncio
 from app.routers import chat, health, models
 from app.chat.routes import router as chats_router
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
-from app.observability.tracing import setup_tracing
+#from app.observability.tracing import setup_tracing
+from app.observability.rag_with_tracing import setup_tracing
 
 from app.observability.logging import setup_logging
 from app.core.config import get_settings
@@ -50,7 +51,7 @@ canary = f"CANARY_{secrets.token_hex(4)}"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    setup_tracing()
+    setup_tracing(settings)
     app.state.canary=canary
     app.state.llm = AsyncOpenAI(
         api_key=settings.llm.openai_api_key.get_secret_value(),

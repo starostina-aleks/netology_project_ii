@@ -1,3 +1,5 @@
+import os
+
 from llama_index.core.base.embeddings.base import similarity
 from llama_index.core.node_parser import TokenTextSplitter,SentenceSplitter,SemanticSplitterNodeParser,MarkdownNodeParser
 from llama_index.core import SimpleDirectoryReader
@@ -11,12 +13,13 @@ from app.services import rag
 import json
 import re
 from app.services.rag import RAGService
-from collections import Counter
+from collections import Counter, defaultdict
 import asyncio
 from llama_index.core.schema import TextNode
 import nltk
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.schema import BaseNode
+from llama_index.readers.file import UnstructuredReader,PyMuPDFReader,HTMLTagReader,MarkdownReader
 
 
 #nltk.download('punkt')
@@ -29,20 +32,153 @@ def russian_sentence_tokenizer(text: str) -> list[str]:
     # Насильно указываем NLTK использовать правила русского языка
     return nltk.sent_tokenize(text, language="russian")
 
+
+def print_documents_stats(documents: list):
+    if not documents:
+        print("❌ Список документов пуст.")
+        return
+
+    # Словари для сбора метрик
+    ext_counts = defaultdict(int)  # Количество документов по расширениям
+    ext_chars = defaultdict(int)  # Количество символов по расширениям
+    ext_words = defaultdict(int)  # Количество слов по расширениям
+    unique_files = set()  # Уникальные файлы (по source_path или id)
+
+    total_chars = 0
+    total_words = 0
+
+    for doc in documents:
+        # Извлекаем путь к файлу из метаданных (или используем id_ документа)
+        file_path = doc.metadata.get("source_path") or doc.id_
+        unique_files.add(file_path)
+
+        # Определяем расширение файла
+        _, ext = os.path.splitext(file_path.lower())
+        if not ext:
+            ext = ".unknown / inline"
+
+        # Считаем текст
+        text_len = len(doc.text)
+        word_count = len(doc.text.split())
+
+        # Агрегируем статистику
+        ext_counts[ext] += 1
+        ext_chars[ext] += text_len
+        ext_words[ext] += word_count
+
+        total_chars += text_len
+        total_words += word_count
+
+    # --- ВЫВОД РЕЗУЛЬТАТОВ В КОНСОЛЬ ---
+    print("\n" + "=" * 50)
+    print("📊 СТАТИСТИКА ЗАГРУЖЕННЫХ ДОКУМЕНТОВ (RAG DATA)")
+    print("=" * 50)
+    print(f"Всего объектов Document в памяти: {len(documents)}")
+    print(f"Всего уникальных исходных файлов: {len(unique_files)}")
+    print(f"Общее количество символов:        {total_chars:,}")
+    print(f"Общее количество слов:            {total_words:,}")
+    print("-" * 50)
+    print(f"{'Расширение':<15} | {'Кол-во док.':<12} | {'Символов':<12} | {'Слов':<10}")
+    print("-" * 50)
+
+    for ext in sorted(ext_counts.keys()):
+        print(f"{ext:<15} | {ext_counts[ext]:<12} | {ext_chars[ext]:<12,} | {ext_words[ext]:<10,}")
+
+    print("=" * 50 + "\n")
+
+
+def print_small_documents(documents: list, char_threshold: int = 150):
+    """ Находит и выводит документы, размер которых меньше char_threshold символов. """
+    print("\n" + "=" * 70)
+    print(f"⚠️  СПИСОК МАЛЕНЬКИХ И ПУСТЫХ ДОКУМЕНТОВ (МЕНЬШЕ {char_threshold} СИМВОЛОВ)")
+    print("=" * 70)
+
+    small_docs_count = 0
+
+    # Сортируем документы по размеру текста от меньшего к большему
+    sorted_docs = sorted(documents, key=lambda d: len(d.text.strip()))
+
+    print(f"{'Файл / ID':<45} | {'Символов':<8} | {'Слов':<6}")
+    print("-" * 70)
+
+    for doc in sorted_docs:
+        clean_text = doc.text.strip()
+        text_len = len(clean_text)
+
+        # Если документ проходит под наш порог "маленького"
+        if text_len <= char_threshold:
+            small_docs_count += 1
+
+            # Извлекаем имя файла для компактного вывода
+            file_path = doc.metadata.get("source_path") or doc.id_
+            file_name = os.path.basename(file_path) if os.path.isabs(file_path) or "/" in file_path else file_path
+
+            word_count = len(clean_text.split())
+
+            # Показываем первые 40 символов текста в скобках для понимания контента
+            preview = clean_text.replace('\n', ' ')[:40]
+            preview_str = f" [Превью: \"{preview}...\"]" if text_len > 0 else " [ПУСТОЙ ДОКУМЕНТ]"
+
+            print(f"{file_name[:45]:<45} | {text_len:<8} | {word_count:<6}{preview_str}")
+
+    if small_docs_count == 0:
+        print(f"✅ Отлично! Документов меньше {char_threshold} символов не обнаружено.")
+    else:
+        print("-" * 70)
+        print(f"Всего найдено подозрительно маленьких документов: {small_docs_count}")
+    print("=" * 70 + "\n")
+
 def get_nodes():
+
+    file_extractor = {
+        ".md": MarkdownReader()
+    }
+
     documents = SimpleDirectoryReader(
         str(settings.rag_data_dir),
-        recursive=True
+        recursive=True,
+        filename_as_id=True,
+        #file_extractor=file_extractor,
     ).load_data()
-
+    for doc in documents:
+        print(doc.metadata)
+        break
     print(f"Load {len(documents)} documents")
+
+    """
     pipeline = IngestionPipeline(
         transformations=[
             MarkdownNodeParser()
-
         ]
     )
-    nodes_md = pipeline.run(documents=documents)
+    #nodes_md = pipeline.run(documents=documents)
+
+    #splitter=MarkdownNodeParser()
+    #nodes_md=splitter.get_nodes_from_documents(documents)
+    save_nodes_to_file(documents,"output/debug_nodes_md.txt")
+    nodes = []
+    for node in documents:
+        text = node.text.strip()
+        lines = text.split('\n')
+        if len(lines) == 1:
+            continue
+        node.metadata['header_path'] = lines[0]
+        #print(lines[0])
+        node.set_content('\n'.join(lines[1:]))
+        nodes.append(node)
+
+    save_nodes_to_file(nodes, "output/debug_nodes_md1.txt")
+    splitter = SentenceSplitter(
+        chunk_size=settings.rag_chunk_size,  # Максимальный размер чанка в токенах
+        chunk_overlap=settings.rag_chunk_overlap,  # Перекрытие между чанками
+        paragraph_separator="\n",  # Разделитель абзацев по вашему запросу
+        chunking_tokenizer_fn=russian_sentence_tokenizer  # Наш русский токенайзер
+    )
+    nodes_ss = splitter.get_nodes_from_documents(nodes)
+    save_nodes_to_file(nodes_ss, "output/debug_nodes_ss.txt")
+    print_documents_stats(nodes_ss)
+    return nodes_ss
+    #---
     nodes=[]
     for node in nodes_md:
         lines = node.text.split('\n')
@@ -61,10 +197,28 @@ def get_nodes():
         chunking_tokenizer_fn=russian_sentence_tokenizer  # Наш русский токенайзер
     )
     nodes_ss=splitter.get_nodes_from_documents(nodes)
-    
     return nodes_ss
+    
+    for node in nodes_md:
+        lines = node.text.split('\n')
+        first_line = lines[0]
+
+        node.metadata['header_path'] = first_line
+        node.text = '\n'.join(lines[1:])
 
 
+    splitter = SentenceSplitter(
+        chunk_size=settings.rag_chunk_size,  # Максимальный размер чанка в токенах
+        chunk_overlap=settings.rag_chunk_overlap,  # Перекрытие между чанками
+        paragraph_separator="\n\n",  # Разделитель абзацев по вашему запросу
+        chunking_tokenizer_fn=russian_sentence_tokenizer  # Наш русский токенайзер
+    )
+    nodes_ss = splitter.get_nodes_from_documents(nodes_md)
+    #for node in nodes_ss:
+        #node.text =  f"\nРаздел: {node.metadata['header_path']}\n {node.text}"
+    save_nodes_to_file(nodes_ss)
+    return nodes_ss
+    """
 
 def save_nodes_to_file(nodes: list[BaseNode], output_path: str = "output/debug_nodes.txt") -> None:
     """
@@ -93,9 +247,9 @@ def save_nodes_to_file(nodes: list[BaseNode], output_path: str = "output/debug_n
 
 async def main():
 
-    nodes=get_nodes()
-    save_nodes_to_file(nodes=nodes)
-
+    #nodes=get_nodes()
+    #save_nodes_to_file(nodes=nodes)
+    '''
     rag_service = RAGService(settings=settings, nodes=nodes)
     rag_service.build()
 
@@ -143,6 +297,8 @@ async def main():
     print(f"• Средняя длина чанка: {avg_chunk_tokens :.1f} токенов")
     print(f"• Среднее число чанков на документ: {avg_chunks_per_doc:.2f} (Всего документов: {total_unique_docs})")
     await rag_service.close()
+    '''
+    
 
 
 

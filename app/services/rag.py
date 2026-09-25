@@ -1,24 +1,26 @@
-from llama_index.core.base.embeddings.base import similarity
+import asyncio
+from llama_index.embeddings.huggingface.base import HuggingFaceEmbedding
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from llama_index.core import Settings,StorageContext, SimpleDirectoryReader, VectorStoreIndex
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.core import PromptTemplate
 from llama_index.llms.openai_like import OpenAILike
 from app.core.config import get_settings, Settings as AppSettings
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.schema import BaseNode, NodeWithScore
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from app.services.condense import condense_question
 import logging
-import asyncio
+
 import httpx
 import json
 import re
 from openai import AsyncOpenAI
+import time
 
 logger = logging.getLogger(__name__)
+
 
 QA_PROMPT = PromptTemplate(
     "Ниже - пронумерованные источники из  базы знаний.\n"
@@ -30,6 +32,18 @@ QA_PROMPT = PromptTemplate(
     "Вопрос: {query_str}\n"
     "Ответ: "
 )
+"""
+
+QA_PROMPT = PromptTemplate(
+    "Ниже - пронумерованные источники из  базы знаний.\n"
+    "---------------------\n{context_str}\n---------------------\n"
+    "Ответь на вопрос, опираясь ТОЛЬКО на источники."
+    "Если ответа в источниках нет — честно напиши, что не нашёл его в базе знаний,"
+    "и ничего  не выдумывай. Отвечай по-русски, коротко и по делу.\n"
+    "Вопрос: {query_str}\n"
+    "Ответ: "
+)
+"""
 
 REFUSAL_TEXT="В базе знаний нет ответа на этот вопрос."
 
@@ -37,7 +51,6 @@ def _numbered_context(nodes: list[NodeWithScore]) -> str:
     return "\n\n".join(f"[{i}] {sn.get_content}" for i, sn in enumerate(nodes, start=1))
 
 def parse_citations(text:str,sources:list[dict])->str:
-    print(sources)
     by_id={s["id"]:s for s in sources}
     def replace(match:re.Match)->str:
         source=by_id.get(int(match.group(1)))
@@ -48,7 +61,6 @@ def build_sources(source_nodes:list[NodeWithScore]) -> list[dict]:
     sources=[]
     for i,node in enumerate(source_nodes,start=1):
         meta=node.metadata or {}
-        print(meta)
         sources.append({
             "id": i,
             "text": node.text[:300],
@@ -60,7 +72,7 @@ def build_sources(source_nodes:list[NodeWithScore]) -> list[dict]:
 
 class RAGService:
     def __init__(self,settings:AppSettings,embed_model,nodes:list[BaseNode] =None,splitter=None)->None:
-        self._postprocessor = None
+        self._postprocessor: list = []
         self._settings = settings
         Settings.embed_model = embed_model
         sync_client = httpx.Client(proxy=settings.https_proxy)
@@ -86,7 +98,7 @@ class RAGService:
                 chunk_overlap=settings.rag_chunk_overlap,
             )
         else:
-            Settings.node_parser =splitter
+            Settings.node_parser = splitter
 
 
         self._aclient = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key.get_secret_value(), timeout=60.0,)
@@ -97,7 +109,7 @@ class RAGService:
         self.nodes=nodes
         self._reranker = SentenceTransformerRerank(
             model=settings.rag_rerank_model,
-            top_n=settings.rag_top_k
+            top_n=settings.rag_rerank_top_k
         )
 
     def build(self)->None:
@@ -143,7 +155,7 @@ class RAGService:
                 )
         self._retriever=self._index.as_retriever(
             similarity_top_k=self._settings.rag_retrieved_top_k,
-            sparse_top_k=self._settings.rag_retrieved_top_k*2,
+            sparse_top_k=self._settings.rag_retrieved_top_k,
             enable_hybrid=True,
             vector_store_query_mode="hybrid"
         )
@@ -160,6 +172,27 @@ class RAGService:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
         nodes=await self._retrieve(query)
         return await self._synthesize(query=query,nodes=nodes)
+
+    #.evaluate_inputs(q), возвращающий answer и список строк retrieved_contexts за один ретрив)
+    async def evaluate_inputs(
+            self,
+            query:str,
+    )->dict|None:
+        if self._retriever is None:
+            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
+
+        start_total = time.perf_counter()
+        start_retrieval = time.perf_counter()
+        nodes = await self._retrieve(query)
+        end_retrieval = time.perf_counter()
+        result=await self._synthesize(query=query, nodes=nodes)
+        end_total = time.perf_counter()
+
+        result["retrieved_contexts"] = [sn.get_content() for sn in nodes]
+        result['total_latency_sec'] = end_total - start_total
+        result['retrieval_latency_sec'] = end_retrieval - start_retrieval
+        return result
+
 
     async def generate_rag_context(
             self,
@@ -203,7 +236,8 @@ class RAGService:
                 "answer": REFUSAL_TEXT,
                 "top_score": round(top_score, 3),
                 "sources": [],
-                "confident":False
+                "confident": False,
+                "generation_latency_sec": 0.0
             }
         '''
         response= await Settings.llm.acomplete(
@@ -215,18 +249,21 @@ class RAGService:
         messages=[
             {"role": "user", "content": user_context}
         ]
+        start_generation = time.perf_counter()
         response = await self._llm.chat.completions.create(
             model=self._settings.rag_llm_model,
             messages=messages,
             temperature=0.3,
             max_tokens=4000,
         )
+        end_generation = time.perf_counter()
         sources=build_sources(nodes)
         return {
             "answer": parse_citations(str(response),sources),
             "top_score": round(top_score, 3),
             "sources": sources,
-            "confident": False
+            "confident": False,
+            "generation_latency_sec": end_generation - start_generation
         }
 
     async def _retrieve(self,query:str)->list[NodeWithScore]:
@@ -284,17 +321,30 @@ class RAGService:
         except Exception:
             logger.debug("ошибка при закрытии async Qdrant-клиента", exc_info=True)
 
+
+
 async def main():
-    service = RAGService(get_settings())
+    print('start main')
+    model_path = r'F:\embeddings\multilingual-e5-base'
+
+
+    embed_model = HuggingFaceEmbedding(
+        model_name=model_path,
+        device="cpu",
+        embed_batch_size=8,
+    )
+    
+    service = RAGService(get_settings(),embed_model=embed_model)
+    print('service_build...')
     service.build()
     query="Какие обязанности командира корабля?"
-    res=await service.answer(query)
+    res=await service.evaluate_inputs(query)
     print(res)
     await service.close()
+  
+
 
 if __name__ == "__main__":
-   asyncio.run(main())
-
-
+    asyncio.run(main())
 
 

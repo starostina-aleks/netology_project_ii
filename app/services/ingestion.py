@@ -1,3 +1,4 @@
+
 import os
 import re
 import logging
@@ -5,11 +6,12 @@ from datetime import date
 from pathlib import Path
 from llama_index.core import Document
 from llama_index.core.ingestion import IngestionPipeline, DocstoreStrategy
-from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.node_parser import SentenceSplitter,MarkdownNodeParser
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.vector_stores.qdrant import QdrantVectorStore
+
 from pydantic_core.core_schema import format_ser_schema
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
 from app.core.config import Settings as AppSettings,get_settings
 from llama_index.core import SimpleDirectoryReader
 from llama_index.readers.file import UnstructuredReader,PyMuPDFReader,HTMLTagReader,MarkdownReader
@@ -17,6 +19,8 @@ from collections import Counter
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from collections import defaultdict
 from app.services.my_chunking import save_nodes_to_file
+from app.parsers.split_text import CustomMarkdownTransformer,get_sentence_splitter
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +28,6 @@ supported_extensions = [".pdf", ".docx", ".html", ".htm", ".txt", ".md"]
 EXCLUDED_EMBED_KEYS = [
     "file_path",
     "source_path",
-    "source_file",
     "file_name",
     "file_type",
     "file_size",
@@ -53,7 +56,7 @@ def doc_type_from_path(path:str)->str:
     return Path(path).suffix.lstrip(".").lower() or "unknown"
 
 
-def category_from_path(file_path: str,data_dir:Path|None=None) -> str:
+def category_from_path1(file_path: str,data_dir:Path|None=None) -> str:
     if data_dir is None:
         return "unknown"
     data_dir = data_dir.resolve()
@@ -67,8 +70,26 @@ def category_from_path(file_path: str,data_dir:Path|None=None) -> str:
 
     return hierarchy_str
 
+
+def category_from_path(file_path: str, data_dir: Path | None = None) -> str:
+    if data_dir is None:
+        return "unknown"
+    data_dir = data_dir.resolve()
+    abs_file_path = Path(file_path).resolve()
+    try:
+        relative_path = abs_file_path.relative_to(data_dir)
+        path_parts = relative_path.parts
+        # Если файл лежит прямо в корне data_dir (нет папки категории)
+        if len(path_parts) <= 1:
+            return "unknown"
+        return path_parts[0]
+
+    except ValueError:
+        return "unknown"
+
+
 def file_metadata(path: str) -> dict:
-    print("file_metadata",path,Path(path).name)
+    #print("file_metadata",path,Path(path).name)
     return {
         "source_file": Path(path).name,
         "doc_type": doc_type_from_path(path),
@@ -89,6 +110,7 @@ def enrich(documents:list[Document])->list[Document]:
         doc.excluded_embed_metadata_keys=EXCLUDED_EMBED_KEYS
         doc.excluded_llm_metadata_keys=EXCLUDED_EMBED_KEYS
     return documents
+
 def mark_as_failed(path_str,reason:str):
     p=Path(path_str)
     if (p.exists()):
@@ -134,17 +156,63 @@ class IngestionService:
 
     def _build_pipeline(self)->IngestionPipeline:
         return IngestionPipeline(
-            transformations=[
-                SentenceSplitter(
-                    chunk_size=self._settings.rag_chunk_size,
-                    chunk_overlap=self._settings.rag_chunk_overlap,
-                ),
-                self._embed_model
-            ],
+            transformations=[],
             docstore=self._docstore,
             vector_store=self._vector_store,
             docstore_strategy=DocstoreStrategy.UPSERTS,
         )
+
+    def _get_transformations_for_extension(self, ext: str) -> list:
+        """Возвращает цепочку трансформаций в зависимости от расширения файла."""
+        if ext == ".md":
+            return [
+                CustomMarkdownTransformer(
+                ),
+                self._embed_model
+            ]
+
+        # Для всех остальных файлов (.txt, .pdf, .docx) — стандартный сплиттер
+        return [
+            get_sentence_splitter(),
+            self._embed_model
+        ]
+
+    def ingest_documents(self, documents: list[Document]):
+        if not documents:
+            return []
+
+        # 1. Группируем документы по исходному файлу
+        # Используем source_path, который вы гарантированно заполняете в метаданных
+        docs_by_files = defaultdict(list)
+        for doc in documents:
+            file_path = doc.metadata.get("source_path")
+            if file_path:
+                docs_by_files[file_path].append(doc)
+            else:
+                # На всякий случай фолбэк, если source_path почему-то пуст
+                docs_by_files["unknown_file.txt"].append(doc)
+
+        final_nodes = []
+
+        # 2. Обходим каждый файл отдельно
+        for file_path, file_docs in docs_by_files.items():
+            file_name = os.path.basename(file_path)
+            _, ext = os.path.splitext(file_name.lower())
+
+            # Получаем трансформации именно под расширение этого файла
+            current_transformations = self._get_transformations_for_extension(ext)
+
+            print(f"🚀 Пайплайн: Обработка файла '{file_name}' ({len(file_docs)} док.) с трансформациями для {ext or 'default'}")
+
+            self._pipeline.transformations=current_transformations
+            # Запускаем конвейер для пачки документов ОДНОГО файла
+            nodes = self._pipeline.run(
+                documents=file_docs
+            )
+            final_nodes.extend(nodes)
+
+        return final_nodes
+
 
     def _persist_docstore(self)->None:
         self._docstore_path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,7 +220,8 @@ class IngestionService:
 
     def ingest_all(self)->int:
         documents=self._read()
-        nodes=self._pipeline.run(documents=documents,show_progress=False)
+        #nodes=self._pipeline.run(documents=documents,show_progress=False)
+        nodes=self.ingest_documents(documents)
         self._persist_docstore()
         logger.info(
             "ingestion: %s корпус проиндексирован, документов=%d, нод=%d ",
@@ -169,8 +238,9 @@ class IngestionService:
             logger.warning("ingestion: Нет файлов для обработки.")
             return 0
         documents=self._read(input_files=filtered_files)
-        nodes = self._pipeline.run(documents=documents, show_progress=False)
-        save_nodes_to_file(nodes,output_path="output/nodes_md.txt")
+        #nodes = self._pipeline.run(documents=documents, show_progress=False)
+        nodes = self.ingest_documents(documents)
+        #save_nodes_to_file(nodes,output_path="output/nodes_md.txt")
         self._persist_docstore()
         logger.info(
             "ingestion: корпус проиндексирован, документов=%d, нод=%d ",
@@ -185,7 +255,6 @@ class IngestionService:
             ".html": HTMLTagReader(tag="body"),  # Явно указываем парсить только тег body
             ".md": MarkdownReader()
         }
-
         reader = SimpleDirectoryReader(
             input_dir=self._data_dir if input_files is None else None,
             input_files=[str(p) for p in input_files] if input_files else None,
@@ -214,7 +283,7 @@ class IngestionService:
                     failed_files.add(file_path)
                     mark_as_failed(file_path,"Файл не содержит текстового слоя (скан или картинка)")
         valid_documents=[
-            doc for doc in documents if doc.metadata["source_path"] or doc.id_ not in failed_files
+            doc for doc in documents if doc.metadata.get("source_path") not in failed_files
         ]
         for doc in valid_documents:
                 doc.metadata["category"]=category_from_path(doc.metadata["source_path"], self._data_dir)
@@ -224,9 +293,12 @@ if __name__=="__main__":
     settings=get_settings()
     if os.path.exists(settings.rag_data_dir):
         file_paths=[Path(p) for p in settings.rag_data_dir.rglob('*') if p.is_file()]
-        #print(file_paths)
-        #ingest=IngestionService(settings=get_settings())
-        #print(file_paths)
-        #ingest_stats(file_paths)
-        ingest=IngestionService(settings=settings,)
-        ingest.ingest_files(input_files=file_paths)
+        ingest_stats(file_paths)
+        model_path = settings.embedding_model
+        embed_model = HuggingFaceEmbedding(
+            model_name=model_path,
+            device="cpu",
+            embed_batch_size=8,
+        )
+        ingest=IngestionService(settings=settings,embed_model=embed_model)
+        ingest.ingest_all()

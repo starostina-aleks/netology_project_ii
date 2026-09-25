@@ -57,6 +57,8 @@ class Settings(BaseSettings):
 
     rate_limit_per_min: int = 30
     https_proxy: str
+    phoenix_enabled: bool = False
+    phoenix_collector_endpoint: str = "http://localhost:6006"
 
     # Chat ---------------------------------------------------------------
     database_url: str = "postgresql+asyncpg://chat:chat@localhost:5432/chat"
@@ -66,6 +68,11 @@ class Settings(BaseSettings):
     chat_context_window: int = 10
     bot_url: str = "http://bot:9000"
     internal_token: SecretStr = SecretStr("change-me-internal")
+
+    # Оценка качества (RAGAS) -------------------------------------------
+    anthropic_api_key: SecretStr | None = None
+    eval_judge_provider: Literal["anthropic", "openai"] = "openai"
+    eval_judge_model: str = "anthropic/claude-sonnet-4.6-thinking-high" #"claude-sonnet-4-6"
 
 @lru_cache
 def get_settings() -> Settings:
