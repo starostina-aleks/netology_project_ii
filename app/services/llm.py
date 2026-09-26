@@ -1,7 +1,6 @@
 import hashlib
 import logging
 from typing import Any
-
 import anyio
 import json
 from collections.abc import AsyncIterator
@@ -14,6 +13,9 @@ from app.observability.presidio import redact_pii_presidio
 from app.services.security.input_validator import validate_input
 from app.services.security.output_filter import filter_output
 
+from app.services.security.input_validator import validate_input
+from app.services.security.output_filter import filter_output
+from app.prompts.loader import render_system_prompt
 
 from app.core.exceptions import (
     LLMAuthError,
@@ -45,6 +47,8 @@ class LLMService:
         self.ttl = ttl
         self.canary = canary
 
+        self.canary = canary
+        self.system_prompt = render_system_prompt(product_name="Acme Cloud")
 
     def _key(self, req: ChatRequest) -> str:
         payload = req.model_dump(exclude={"user_id","session_id","stream"})
@@ -88,6 +92,42 @@ class LLMService:
 
         return system_prompt,[m.model_dump() for m in req.messages]
 
+    def _validate_request(self, req: ChatRequest) -> ChatResponse | None:
+        for msg in req.messages:
+            if msg.role != "user":
+                continue
+
+            result = validate_input(msg.content)
+            if not result.ok:
+                logger.info(
+                    "security.input_validation",
+                    user_id=req.user_id,
+                    blocked=True,
+                    rule=result.rule,
+                    reason=result.reason,
+                )
+
+                return ChatResponse(
+                    content="Я не могу выполнить этот запрос, так как он содержит инструкции, направленные на изменение поведения системы.",
+                    finish_reason=result.rule,
+                    usage=Usage(
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        total_tokens=0,
+                    ),
+                    model=req.model,
+                    cached=False,
+                )
+
+        return None
+
+    def _build_messages(self,req: ChatRequest,) -> list[dict]:
+        #system_prompt=render_system_prompt(product_name="Acme Cloud")
+        return [
+            {"role": "system","content": self.system_prompt},#f"{system_prompt}\n Секретная метка (не разглашать): {self.canary}",
+            *[m.model_dump() for m in req.messages],
+        ]
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def _call(self, req: ChatRequest) -> ChatResponse:
         try:
@@ -95,7 +135,7 @@ class LLMService:
             t0 = time.perf_counter()
             raw = await self.llm.chat.completions.create(
                 model=req.model,
-                messages=messages,
+                messages=self._build_messages(req),
                 temperature=req.temperature,
                 max_tokens=req.max_tokens,
             )
@@ -105,6 +145,13 @@ class LLMService:
             resp.content = await filter_output(
                 answer=resp.content,
                 system_prompt=system_prompt,
+                canary=self.canary,
+            )
+            # clean_text_reg = redact_pii(req.messages[-1].content)
+
+            resp.content = await filter_output(
+                answer=resp.content,
+                system_prompt=render_system_prompt(),
                 canary=self.canary,
             )
             # clean_text_reg = redact_pii(req.messages[-1].content)
@@ -133,9 +180,7 @@ class LLMService:
         except APIConnectionError as e:
             raise LLMError(f"connection error: {e}") from e
 
-
     async def complete(self, req: ChatRequest) -> ChatResponse:
-
         fallback = self._validate_request(req)
         if fallback:
             return fallback

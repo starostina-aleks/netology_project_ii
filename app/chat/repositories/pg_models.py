@@ -40,6 +40,7 @@ class ChatMessageRow(Base):
     role: Mapped[str]
     content: Mapped[str]
     media_refs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    sources: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     tokens: Mapped[int | None]
     prompt_id: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(
@@ -67,4 +68,15 @@ class SystemPromptRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         TimestampTZ, default=lambda: datetime.now(UTC)
     )
+
+class RagQueryRow(Base):
+    __tablename__ = "rag_queries"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    question_normalized:Mapped[str]
+    confident:Mapped[bool]
+    top_score:Mapped[float]
+    created_at: Mapped[datetime] = mapped_column(
+        TimestampTZ, default=lambda: datetime.now(UTC)
+    )
+
 

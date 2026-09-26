@@ -2,6 +2,13 @@
 .env
 __pycache__/
 .idea/
+.embedding_cache/
 garack_env/
-var/
 my_scripts/
+data/
+output/
+output_chandra/
+var/
+.cache/
+.pytest_cache/
+.ruff_cache/

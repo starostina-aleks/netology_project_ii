@@ -17,7 +17,8 @@ class ChatMessage(BaseModel):
     content: str
     tokens: int | None = None
     media_refs: dict | None = None
-    prompt_id: UUID | None = None
+    sources:list[dict] |None=None
+    prompt_id:UUID | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 class SystemPrompt(BaseModel):

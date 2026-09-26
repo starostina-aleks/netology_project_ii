@@ -5,6 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 from app.deps.providers import get_cache, get_llm
 from app.main import app, canary
 import httpx
+from app.services.vector_store import VectorStore
+from app.core.config import get_settings
+import uuid
 from openai import (
         APIConnectionError,
         APITimeoutError,
@@ -13,6 +16,8 @@ from openai import (
         RateLimitError,
     )
 
+
+settings = get_settings()
 #имитирует официальный ответ от API OpenAI
 def _make_openai_response(content: str = "мок-ответ", model: str = "gpt-4o-mini"):
     return MagicMock(
@@ -100,3 +105,51 @@ async def client(mock_llm, mock_cache):
         yield ac
 
     app.dependency_overrides.clear()
+
+@pytest.fixture
+def temp_collection_name():
+    """Генератор уникального имени коллекции для изоляции тестов."""
+    return f"int_test_collection_{uuid.uuid4().hex[:8]}"
+
+
+@pytest.fixture
+async def vector_store(temp_collection_name):
+    """Фикстура для инициализации стандартного VectorStore (dim=4)."""
+    store = VectorStore(
+        url=settings.qdrant_url,
+        api_key=(
+            settings.qdrant_api_key.get_secret_value()
+            if settings.qdrant_api_key is not None
+            else None
+        ),
+        collection=temp_collection_name,
+        dim=4
+    )
+    yield store
+    # Очистка после теста
+    try:
+        await store.client.delete_collection(store.collection)
+    except Exception:
+        pass
+    await store.close()
+
+@pytest.fixture
+async def pre_vector_store(temp_collection_name):
+    """Фикстура для инициализации стандартного VectorStore (dim=4)."""
+    store = VectorStore(
+        url=settings.qdrant_url,
+        api_key=(
+            settings.qdrant_api_key.get_secret_value()
+            if settings.qdrant_api_key is not None
+            else None
+        ),
+        collection=temp_collection_name,
+        dim=1536
+    )
+    yield store
+    # Очистка после теста
+    try:
+        await store.client.delete_collection(store.collection)
+    except Exception:
+        pass
+    await store.close()

@@ -1,0 +1,137 @@
+============================================================
+📋 ПОЛНЫЙ ОТЧЕТ О ПРОВЕРКЕ ДОСТОВЕРНОСТИ (PHOENIX)
+============================================================
+
+🔹 [ID Спана]: 12aeac9e0f11c9ce
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately summarizes rules related to ship maneuvering based on the provided context, citing specific references and aligning with the information found in the sources. There is no false information present.
+------------------------------------------------------------
+🔹 [ID Спана]: e1b82a0ce1f70dd6
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response correctly summarizes the rules for the movement of vessels in traffic separation schemes and mentions the lack of specific exceptions for vessels at anchor, which aligns with the context. Thus, it is accurate and does not contain made-up information.
+------------------------------------------------------------
+🔹 [ID Спана]: d6a176682939faff
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately describes the military uniform for senior officers based on the context provided. It mentions specific items such as the black wool jacket and trousers, the dark blue striped shirt, high-top boots, and winter clothing elements like black caps and leather jackets, which are consistent with the information from the sources [1] and [2]. Therefore, the response is faithful.
+------------------------------------------------------------
+🔹 [ID Спана]: 486eb6cbd9d913e1
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+Response accurately summarizes the requirements for wearing insignia by military personnel in the Russian Federation as stated in the provided context, referencing correct source numbers for each point. No false information is presented.
+------------------------------------------------------------
+🔹 [ID Спана]: 7b4e5828c3b76e87
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response correctly states that citizens of the Russian Federation who have been discharged from military service are entitled to medical assistance in military medical institutions under certain conditions, specifically citing the appropriate reasons for discharge as stated in the context. The claim regarding reasons for entitlement to medical help is consistent with the provided sources, particularly source [1]. Therefore, the response is factual and does not contain false information.
+------------------------------------------------------------
+🔹 [ID Спана]: e092f88e3c7be2b1
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response correctly describes that the size of the monthly contributions is calculated based on the annual contribution, as stated in the context. The context confirms that the annual contribution is set by federal law, which aligns with the response provided.
+------------------------------------------------------------
+🔹 [ID Спана]: 5ef650f32c4939be
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately states that the attestation for military personnel serving outside of Russia occurs after a year from taking a military position and upon their return from abroad, which is supported by the context provided in source [1].
+------------------------------------------------------------
+🔹 [ID Спана]: dbba6586f5114017
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately describes how the readiness check for ships in a formation is organized based on the relevant context. The commander is responsible for establishing the readiness of the ships and overseeing their preparation, as well as checking their state and addressing deficiencies, which is supported by [3]. Additionally, it mentions that the flagship specialist's duties include checking the combat readiness of ships and instructing ship commanders, which is also confirmed by [2]. Therefore, the response is consistent with the information provided in the context.
+------------------------------------------------------------
+🔹 [ID Спана]: f70c791be40837cf
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately describes the structure of a боевой номер as outlined in the provided context. It mentions the three parts of the боевой номер: the first part indicating the боевую часть or службу, the second part indicating the номер боевого поста, and the third part defining the принадлежность мичмана, старшины или матроса к боевой смене, all of which is supported by information from the context, specifically source [1]. Therefore, the response is faithful to the facts provided in the context.
+------------------------------------------------------------
+🔹 [ID Спана]: f04c3f5fcac6674f
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately reflects the content and information provided in the context, citing relevant sources that explain the organization of technical maintenance and repair of shipboard weapons and equipment. The details include plan development, inspections, and measures for addressing malfunctions, which are all supported by the provided sources. There is no invented information in the response; hence, it is faithful to the context.
+------------------------------------------------------------
+🔹 [ID Спана]: bafe42b1ab8bf5e2
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately reflects the details provided in the context by summarizing the key points about the rules for storing and accounting for weapons and ammunition as specified in the sources. All claims made in the response are supported by the corresponding references to the sources.
+------------------------------------------------------------
+🔹 [ID Спана]: 566ec2f72639d959
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately states that a coefficient of 1.80 applies to the Kamchatka region, except for the Commander Islands, which is supported by the provided sources [1] and [2].
+------------------------------------------------------------
+🔹 [ID Спана]: e79ebc36c3b636bc
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately reflects the information presented in the provided context, outlining key aspects of the payment system for civil personnel in military units per the referenced documents. Each detail is substantiated by the sources listed in the context.
+------------------------------------------------------------
+🔹 [ID Спана]: 7a1adb01bc4059bd
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately reflects information provided in the context regarding the management and registration of nominal deposit accounts for military housing provisions. It cites the sources correctly and outlines the process without introducing incorrect details or assumptions.
+------------------------------------------------------------
+🔹 [ID Спана]: 433452cb8d7c8900
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately reflects the content provided in the context, specifically regarding the influence of the UN Charter on international maritime law and the obligation of states to act in accordance with its principles for maintaining peace and security. This is supported by the information from both sources [1] and [2]. Therefore, it can be deemed faithful.
+------------------------------------------------------------
+🔹 [ID Спана]: f64161e5ed474748
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response correctly states the main points about the order of taking the military oath based on the context provided in the sources. However, it acknowledges the lack of information regarding fire safety regulations in military units, which is accurate as it did not find relevant details in the sources.
+------------------------------------------------------------
+🔹 [ID Спана]: a880f369576ce1b0
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately references the provisions of both the D еговора о Панамском канале and the Конвенции ООН по морскому праву, specifically about the principles of neutrality and freedom of navigation respectively. It aligns well with the given context materials and does not introduce false information. Therefore, it is faithful to the context.
+------------------------------------------------------------
+🔹 [ID Спана]: c7a72107f53d44d7
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately reflects the information provided in the context about the conditions for working with HIV-infected individuals in military medical organizations, including details about the roles involved and compensation for working with HIV-related materials. Each claim is backed by relevant sources in the context, confirming that the response is faithful to the information given.
+------------------------------------------------------------
+🔹 [ID Спана]: 97e891910e54d065
+🔹 [Метрика]:  faithfulness
+🔹 [Оценка]:   1.0
+🔹 [Вердикт]:  faithful
+🔹 [Полное обоснование]:
+The response accurately reflects the conditions for salary increases for civilian personnel as stated in the provided sources. It mentions the requirements for increases based on combat duty participation, provisions for unpaid leave or illness, additional increases for hazardous work conditions, and the consequences of unexcused absences. Therefore, it is faithful to the context.
+------------------------------------------------------------

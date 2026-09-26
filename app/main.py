@@ -13,13 +13,21 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import structlog
 import secrets
 
-from app.routers import chat, health, models
-from app.admin.routes import router as admin_router
-from app.chat.routes import router as chats_router
+from app.routers import chat, health, models,rag, documents
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
 from app.observability.tracing import setup_tracing
 from app.observability.logging import setup_logging
+
 from app.core.config import get_settings
+from app.services.vector_store import VectorStore
+
+import asyncio
+
+from app.admin.routes import router as admin_router
+from app.chat.routes import router as chats_router
+
+#from app.observability.tracing import setup_tracing
+from app.observability.rag_with_tracing import setup_tracing
 
 try:
     from redis.asyncio import Redis
@@ -38,7 +46,7 @@ canary = f"CANARY_{secrets.token_hex(4)}"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    setup_tracing()
+    setup_tracing(settings)
     app.state.canary=canary
     app.state.llm = AsyncOpenAI(
         api_key=settings.llm.openai_api_key.get_secret_value(),
@@ -55,6 +63,55 @@ async def lifespan(app: FastAPI):
             app.state.redis = redis_client
         except Exception as e:
             logger.warning("Redis недоступен (%s) — продолжаем без кеша", e)
+
+    app.state.vector_store=None
+    try:
+        vector_store = VectorStore(
+            url=settings.qdrant_url,
+            api_key=(
+                settings.qdrant_api_key.get_secret_value()
+                if settings.qdrant_api_key is not None
+                else None
+            ),
+            collection=settings.qdrant_collection,
+            dim=settings.embedding_dim,
+        )
+        await vector_store.ensure_collection()
+        app.state.vector_store = vector_store
+        logger.info(
+            "Qdrant подключён: %s, коллекция %s (dim=%d)",
+            settings.qdrant_url,
+            settings.qdrant_collection,
+            settings.embedding_dim,
+        )
+    except Exception as e:
+        logger.warning("Qdrant Недоступен: %s",e)
+    app.state.embed_model=None
+    app.state.rag_service = None
+    app.state.ingestion = None
+    try:
+        from app.services.rag import RAGService
+        from app.services.ingestion import IngestionService
+        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+        model_path = settings.embedding_model
+        app.state.embed_model = HuggingFaceEmbedding(
+            model_name=model_path,
+            device="cpu",
+            embed_batch_size=8,
+        )
+        ingestion = IngestionService(settings,embed_model=app.state.embed_model)
+        app.state.ingestion = ingestion
+        if ingestion.is_collection_empty():
+            await asyncio.to_thread(ingestion.ingest_all)
+        rag_service = RAGService(settings,embed_model=app.state.embed_model)
+        await asyncio.to_thread(rag_service.build)
+        app.state.rag_service=rag_service
+        logger.info(
+            "RAG доступен, коллекция %s ",
+            settings.rag_collection
+        )
+    except Exception as e:
+        logger.warning("RAG/индексация недоступны : %s - /rag/query и /document вернут 503",e)
 
     app.state.async_engine = None
     app.state.session_factory = None
@@ -75,17 +132,22 @@ async def lifespan(app: FastAPI):
     try:
         await app.state.llm.close()
     except Exception:
-        pass
+        logger.exception("ошибка при закрытии LLM-клиента")
     if app.state.redis is not None:
         try:
             await app.state.redis.close()
         except Exception:
-            pass
-    if app.state.async_engine is not None:
+            logger.exception("ошибка при закрытии Redis")
+    if app.state.vector_store is not None:
         try:
-            await app.state.async_engine.dispose()
+            await app.state.vector_store.close()
         except Exception:
-            pass
+            logger.exception("ошибка при закрытии Qdrant-клиента")
+    if app.state.rag_service is not None:
+        try:
+            await app.state.rag_service.close()
+        except Exception:
+            logger.exception("ошибка при закрытии RAG-сервиса")
 
 app = FastAPI(
     title=settings.app_name,
@@ -215,5 +277,7 @@ async def handle_validation(request: Request, exc: RequestValidationError):
 app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(models.router)
+app.include_router(rag.router)
+app.include_router(documents.router)
 app.include_router(chats_router)
 app.include_router(admin_router)

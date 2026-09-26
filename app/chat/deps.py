@@ -5,6 +5,9 @@ from app.chat.service import ChatService
 from app.core.config import get_settings
 from app.chat.repository import ChatRepository
 from app.chat.repositories.json_repo import JsonChatRepository
+from app.chat.repositories.pg_repo import PostgresChatRepository
+from app.deps.providers import LLMDep,SettingsDep,SessionFactoryDep,RAGServiceDep
+from typing import Annotated,Any
 from app.chat.repositories.pg_repo import PostgresChatRepository, PostgresSystemPromptRepository
 from app.deps.providers import LLMDep,SettingsDep,SessionFactoryDep
 from typing import Annotated
@@ -12,15 +15,16 @@ from app.moderation.service import ModerationService
 
 
 async def get_repository(
-      request: Request
+      session: SessionFactoryDep
 ) -> AsyncIterator[ChatRepository]:
     settings = get_settings()
     if settings.chat_repository =='json':
         yield JsonChatRepository(settings.chat_storage_dir)
         return
     if settings.chat_repository == "postgres":
-        session_factory=request.app.state.session_factory
-        async with session_factory() as session:
+        if session is None:
+            raise RuntimeError("session_factory not initialised-postgres repository unavalable")
+        async with session() as session:
             yield PostgresChatRepository(session)
             return
     raise ValueError(f"unknown chat_repository: {settings.chat_repository}")
@@ -28,11 +32,10 @@ async def get_repository(
 
 ChatRepositoryDep = Annotated[ChatRepository, Depends(get_repository)]
 
-
-
 def get_chat_service(
         repo: ChatRepositoryDep,
         llm:LLMDep,
+        rag:RAGServiceDep,
         settings:SettingsDep,
         session_factory:SessionFactoryDep
 )->ChatService:
@@ -52,7 +55,11 @@ def get_chat_service(
         chat_context_window=settings.chat_context_window,
         chat_context_strategy=settings.chat_context_strategy,
         moderation=moderation,
-        prompt_repo=prompt_repo
+        prompt_repo=prompt_repo,rag=rag
     )
+
+ChatServiceDep = Annotated[Any, Depends(get_chat_service)]
+
+
 
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]

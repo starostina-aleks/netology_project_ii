@@ -1,9 +1,13 @@
 import uuid
 from aiogram.types import Message
+import asyncio
+from uuid import UUID
 from time import monotonic
 from aiogram.exceptions import TelegramRetryAfter
 from bot.keyboards.inline import feedback_kb
 import telegramify_markdown
+from aiogram.enums import ChatAction
+import httpx
 
 DRAFT_MIN_INTERVAL_SEC=0.7
 
@@ -40,7 +44,14 @@ async def stream_to_bot(message: Message,events)->str:
             except TelegramRetryAfter as e:
                 last_draft_at = now + e.retry_after
         elif event.get("type") == "message_saved":
-            assistant_message_id=event.get("message_id")
+            assistant_message_id = event.get("message_id")
+        elif event.get("type") == "sources":
+            sources = event.get("sources")
+            if sources:
+                buffer += "\n\nИсточники:\n"+"\n".join(
+                        f"[{s['id']} {s['file_nme']}]"
+                        +(f", c. {s['page']}" if s.get('page') else "")
+                         for s in sources)
 
     if buffer:
         reply_markup=(

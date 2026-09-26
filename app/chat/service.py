@@ -12,12 +12,16 @@ from app.chat.media import media_to_part, settings
 from app.moderation.domain import ModerationResult
 from app.moderation.service import ModerationService
 from app.chat.prompt_selection import choose_by_split
+from app.chat.media import media_to_part
+from app.core.config import get_settings
+from app.deps.providers import RAGServiceDep,SessionFactoryDep
+from app.admin.repository import AdminRepository
+
 
 import structlog
 logger = structlog.get_logger("llm-service.chat")
 
 #logger = logging.getLogger("llm-service.chat")
-
 
 SUMMARIZE_PROMPT = (
         "Сожми этот диалог в 2-3 предложения. Сохрани: "
@@ -74,10 +78,13 @@ class ChatService:
     def __init__(self,
                  repository: ChatRepository,
                  llm_client,
-                 chat_context_strategy:str,
-                 chat_context_window:int=10,
                  moderation: ModerationService|None=None,
-                 prompt_repo: SystemPromptRepository|None=None,):
+                 prompt_repo: SystemPromptRepository|None=None,
+                 rag:RAGServiceDep|None=None,
+                 chat_context_strategy:str=settings.chat_context_strategy,
+                 default_model:str=settings.llm.default_model,
+                 chat_context_window:int=settings.chat_context_window,
+                 use_condense:bool=True):
         self.repository = repository
         self.llm_client = llm_client
         #self.system_prompt = "Ты полезный ассистент."#render_system_prompt(product_name="Acme Cloud")
@@ -85,6 +92,10 @@ class ChatService:
         self.chat_context_strategy = chat_context_strategy
         self.moderation = moderation
         self.prompt_repo = prompt_repo
+        self.rag=rag
+        self.use_condense=use_condense
+        self.default_model = default_model
+
 
     async def create_chat(
             self,
@@ -139,16 +150,13 @@ class ChatService:
             max_tokens=512,
             reasoning_effort="none",
         )
-
         content=resp.choices[0].message.content
         if content is None:
             return ""
         return content.strip()
 
     def build_messages(self,history: list[ChatMessage],system_prompt) -> list[dict]:
-        messages: list[dict] = []
-        #if system_prompt is not None:
-            #messages.append({"role": "system", "content": system_prompt})
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
         for m in history:
             messages.append(_message_content_for_llm(m))
         return fit_to_budget(messages)
@@ -214,10 +222,41 @@ class ChatService:
             prompt_id=prompt_id,
         )
         await self.repository.append_message(chat_id=chat_id,message=chat_message)
+
         if self.chat_context_strategy=="sliding":
             messages = await self.build_messages_sliding_window(chat_id,effective_prompt)
         else:
             messages = await self.build_messages_hybrid(chat_id,effective_prompt)
+        sources:list[dict]=[]
+        if self.rag is not None:
+            rag_context=await self.rag.generate_rag_context(
+                question=messages[-1].get("content"),
+                history=messages[:-1],
+                use_condense=self.use_condense
+            )
+
+            if not rag_context.get("confident"):
+                yield {"type":"token","delta":rag_context.get("text")}
+                saved = await self.repository.append_message(
+                    chat_id,
+                    ChatMessage(
+                        chat_id=chat_id,
+                        role="assistant",
+                        content=rag_context.get("text")
+                    ),
+                )
+                yield {"type": "message_saved","message_id": str(saved.id),}
+                yield {"type":"sources","sources":[],"confident":False}
+                return
+            messages=messages[:-1]
+            sources=rag_context.get("sources")
+            messages.append(
+                {
+                    "role": "system",
+                    "content":rag_context.get("text")
+                },
+            )
+        buffer = ""
         stream=  await self.llm_client.chat.completions.create(
             model=settings.llm.default_model,
             messages=messages,
@@ -267,13 +306,14 @@ class ChatService:
                     role="assistant",
                     content=buffer,
                     prompt_id=prompt_id,
-
+                    sources=sources
                 ),
             )
             yield {
                 "type": "message_saved",
                 "message_id": str(saved.id),
             }
-
+        if sources:
+            yield {"type": "sources","sources":sources,"confident":True}
 
 
