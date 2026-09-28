@@ -1,0 +1,41 @@
+2026-09-28 13:09:33 [INFO] __main__: task = Узнай текущее время. атем найди в базе знаний правила стоянки военных кораблей на рейде  и статью приказа инбороны о запретных для плавания районах. Отправь дежурному офицеру в Telegram отчет. роверь баланс лицевого счета портовых сборов для крейсера 'аряг', отправь дежурному офицеру в Telegram отчет. Узнай статус согласования на текущее время и отправь результат в Telegram .
+2026-09-28 13:09:37 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-28 13:09:37 [INFO] __main__: step=0 инструмент = get_current_time -> 2026-09-28T12:09:37.231565+03:00
+
+2026-09-28 13:09:50 [INFO] httpx: HTTP Request: POST http://localhost:8000/rag/query "HTTP/1.1 200 OK"
+2026-09-28 13:09:50 [INFO] __main__: step=0 инструмент = search_knowledge_base -> {'answer': "ChatCompletion(id='gen-1790586582-RnPyYMVg02r2L25ZngMb', choices=[Choice(finish_reason='stop', index=0, logprobs=None, message=ChatCompletionMessage(content='Правила стоянки военных кораблей на рейде включают следующие обязанности вахтенного офицера:\\n\\n1. Постоянное нахождение на ходо
+2026-09-28 13:09:53 [INFO] httpx: HTTP Request: POST http://localhost:8000/rag/query "HTTP/1.1 200 OK"
+2026-09-28 13:09:53 [INFO] __main__: step=0 инструмент = search_knowledge_base -> {'answer': 'В базе знаний нет ответа на этот вопрос.', 'top_score': 0.1850000023841858, 'sources': [], 'confident': False}
+
+2026-09-28 13:09:58 [INFO] httpx: HTTP Request: POST http://localhost:8000/rag/query "HTTP/1.1 200 OK"
+2026-09-28 13:09:58 [INFO] __main__: step=0 инструмент = search_knowledge_base -> {'answer': 'В базе знаний нет ответа на этот вопрос.', 'top_score': 0.0020000000949949026, 'sources': [], 'confident': False}
+
+2026-09-28 13:10:02 [INFO] httpx: HTTP Request: POST http://localhost:8000/rag/query "HTTP/1.1 200 OK"
+2026-09-28 13:10:02 [INFO] __main__: step=0 инструмент = search_knowledge_base -> {'answer': 'В базе знаний нет ответа на этот вопрос.', 'top_score': 0.0010000000474974513, 'sources': [], 'confident': False}
+2026-09-28 13:10:07 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+
+2026-09-28 13:10:07 [INFO] __main__: step=1 инструмент = send_telegram_message -> [TELEGRAM → дежурный офицер] Текущая дата и время: 2026-09-28T12:09:37.231565+03:00
+
+Правила стоянки военных кораблей на рейде:
+1. Постоянное нахождение на ходовом мостике вблизи постов контроля за текущей обстановкой и управления машинами и рулем.
+2. Контроль безопасности стоянки корабля в соответс
+2026-09-28 13:10:07 [INFO] __main__: step=1 инструмент = send_telegram_message -> [TELEGRAM → дежурный офицер] К сожалению, информации о статье приказа инбороны о запретных для плавания районах в базе знаний нет.
+
+2026-09-28 13:10:07 [INFO] __main__: step=1 инструмент = send_telegram_message -> [TELEGRAM → дежурный офицер] К сожалению, информации о балансе лицевого счета портовых сборов для крейсера 'аряг' в базе знаний нет.
+
+2026-09-28 13:10:07 [INFO] __main__: step=1 инструмент = send_telegram_message -> [TELEGRAM → дежурный офицер] К сожалению, информации о статусе согласования на текущее время в базе знаний нет.
+
+2026-09-28 13:10:12 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-28 13:10:12 [INFO] __main__: step = 2 финальный ответ
+
+--- trace ---
+{"step": 0, "tool_name": "get_current_time", "tool_args": "{\"timezone\": \"Europe/Moscow\"}", "tool_result": "2026-09-28T12:09:37.231565+03:00", "llm_input_tokens": 1790, "llm_output_tokens": 1796, "duration_ms": 3614.6}
+{"step": 0, "tool_name": "search_knowledge_base", "tool_args": "{\"query\": \"правила стоянки военных кораблей на рейде\"}", "tool_result": "{'answer': \"ChatCompletion(id='gen-1790586582-RnPyYMVg02r2L25ZngMb', choices=[Choice(finish_reason='stop', index=0, logprobs=None, message=ChatCompletionMessage(content='Правила стоянки военных корабл", "llm_input_tokens": 1790, "llm_output_tokens": 1796, "duration_ms": 3614.6}
+{"step": 0, "tool_name": "search_knowledge_base", "tool_args": "{\"query\": \"статья приказа инбороны о запретных для плавания районах\"}", "tool_result": "{'answer': 'В базе знаний нет ответа на этот вопрос.', 'top_score': 0.1850000023841858, 'sources': [], 'confident': False}", "llm_input_tokens": 1790, "llm_output_tokens": 1796, "duration_ms": 3614.6}
+{"step": 0, "tool_name": "search_knowledge_base", "tool_args": "{\"query\": \"баланс лицевого счета портовых сборов для крейсера 'аряг'\"}", "tool_result": "{'answer': 'В базе знаний нет ответа на этот вопрос.', 'top_score': 0.0020000000949949026, 'sources': [], 'confident': False}", "llm_input_tokens": 1790, "llm_output_tokens": 1796, "duration_ms": 3614.6}
+{"step": 0, "tool_name": "search_knowledge_base", "tool_args": "{\"query\": \"статус согласования на текущее время\"}", "tool_result": "{'answer': 'В базе знаний нет ответа на этот вопрос.', 'top_score': 0.0010000000474974513, 'sources': [], 'confident': False}", "llm_input_tokens": 1790, "llm_output_tokens": 1796, "duration_ms": 3614.6}
+{"step": 1, "tool_name": "send_telegram_message", "tool_args": "{\"chat_id\": \"дежурный офицер\", \"text\": \"Текущая дата и время: 2026-09-28T12:09:37.231565+03:00\\n\\nПравила стоянки военных кораблей на рейде:\\n1. Постоянное нахождение на ходовом мостике вблизи постов контроля за текущей обстановкой и управления машинами и рулем.\\n2. Контроль безопасности стоянки корабля в соответствии с решением командира.\\n3. Доклад командиру и дежурному по кораблю обо всех входящих и выходящих с рейда кораблях.\\n4. Организация правильного использования корабельных плавсредств и контроль за их отправкой и приемом.\\n5. Выполнение рейдовых и портовых правил личным составом и проходящими плавсредствами.\\n\\nОбязанности вахтенного матроса:\\nВ вести наблюдение за окружающей обстановкой и докладывать вахтенному помощнику капитана обо всех изменениях, угрожающих безопасности судна.\"}", "tool_result": "[TELEGRAM → дежурный офицер] Текущая дата и время: 2026-09-28T12:09:37.231565+03:00\n\nПравила стоянки военных кораблей на рейде:\n1. Постоянное нахождение на ходовом мостике вблизи постов контроля за те", "llm_input_tokens": 6933, "llm_output_tokens": 6276, "duration_ms": 5459.5}
+{"step": 1, "tool_name": "send_telegram_message", "tool_args": "{\"chat_id\": \"дежурный офицер\", \"text\": \"К сожалению, информации о статье приказа инбороны о запретных для плавания районах в базе знаний нет.\"}", "tool_result": "[TELEGRAM → дежурный офицер] К сожалению, информации о статье приказа инбороны о запретных для плавания районах в базе знаний нет.", "llm_input_tokens": 6933, "llm_output_tokens": 6276, "duration_ms": 5459.5}
+{"step": 1, "tool_name": "send_telegram_message", "tool_args": "{\"chat_id\": \"дежурный офицер\", \"text\": \"К сожалению, информации о балансе лицевого счета портовых сборов для крейсера 'аряг' в базе знаний нет.\"}", "tool_result": "[TELEGRAM → дежурный офицер] К сожалению, информации о балансе лицевого счета портовых сборов для крейсера 'аряг' в базе знаний нет.", "llm_input_tokens": 6933, "llm_output_tokens": 6276, "duration_ms": 5459.5}
+{"step": 1, "tool_name": "send_telegram_message", "tool_args": "{\"chat_id\": \"дежурный офицер\", \"text\": \"К сожалению, информации о статусе согласования на текущее время в базе знаний нет.\"}", "tool_result": "[TELEGRAM → дежурный офицер] К сожалению, информации о статусе согласования на текущее время в базе знаний нет.", "llm_input_tokens": 6933, "llm_output_tokens": 6276, "duration_ms": 5459.5}
+{"step": 2, "tool_name": null, "tool_args": null, "tool_result": "Сообщения были успешно отправлены дежурному офицеру в Telegram. Вот краткое содержание отправленных отчетов:\n\n1. **Текущее время**: 2026-09-28T12:09:37.231565+03:00.\n2. **Правила стоянки военных кораб", "llm_input_tokens": 10246, "llm_output_tokens": 832, "duration_ms": 4641.4}
