@@ -32,18 +32,6 @@ QA_PROMPT = PromptTemplate(
     "Вопрос: {query_str}\n"
     "Ответ: "
 )
-"""
-
-QA_PROMPT = PromptTemplate(
-    "Ниже - пронумерованные источники из  базы знаний.\n"
-    "---------------------\n{context_str}\n---------------------\n"
-    "Ответь на вопрос, опираясь ТОЛЬКО на источники."
-    "Если ответа в источниках нет — честно напиши, что не нашёл его в базе знаний,"
-    "и ничего  не выдумывай. Отвечай по-русски, коротко и по делу.\n"
-    "Вопрос: {query_str}\n"
-    "Ответ: "
-)
-"""
 
 REFUSAL_TEXT="В базе знаний нет ответа на этот вопрос."
 
@@ -71,9 +59,16 @@ def build_sources(source_nodes:list[NodeWithScore]) -> list[dict]:
     return sources
 
 class RAGService:
-    def __init__(self,settings:AppSettings,embed_model,nodes:list[BaseNode] =None,splitter=None)->None:
+    def __init__(self,settings:AppSettings,embed_model=None,nodes:list[BaseNode] =None,splitter=None)->None:
         self._postprocessor: list = []
         self._settings = settings
+        if embed_model is None:
+            embed_model = HuggingFaceEmbedding(
+                model_name=settings.embedding_model,
+                device="cpu",
+                embed_batch_size=8,
+            )
+
         Settings.embed_model = embed_model
         sync_client = httpx.Client(proxy=settings.https_proxy)
         async_client = httpx.AsyncClient(proxy=settings.https_proxy)
@@ -231,6 +226,7 @@ class RAGService:
 
     async def _synthesize(self,query:str,nodes:list[NodeWithScore])->dict:
         top_score=max((sn.score or 0.0 for sn in nodes),default=0.0)
+        print("NODES=",nodes)
         if not nodes or top_score < self._settings.rag_score_threshold:
             return {
                 "answer": REFUSAL_TEXT,
@@ -285,13 +281,18 @@ class RAGService:
         limit=10000
         )
         return scroll_results
-    def retrieve(self,query:str,top_k:int=None):
+
+    async def retrieve(self,query:str,top_k:int=None):
+        """
         if self._index is None:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
         ret_top_k = top_k if top_k is not None else self._settings.rag_top_k
         retriever = self._index.as_retriever(
             similarity_top_k=ret_top_k)
         return retriever.retrieve(query)
+        """
+        nodes = await self._retrieve(query)
+        return nodes[:top_k]
 
     def get_prev_text(self,prev_node_id):
         qdrant_client = self._index.vector_store.client
