@@ -50,3 +50,5 @@ compose.override.yaml
 docker-compose.yml
 docker-compose.override.yml
 .dockerignore
+
+app/models/
