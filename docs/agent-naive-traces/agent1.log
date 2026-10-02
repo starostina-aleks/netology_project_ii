@@ -1,0 +1,12 @@
+1. найди правила подготовки к присяге и сообщи их клиенту в чат 12345
+
+2026-09-25 17:22:56 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-25 17:22:56 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/rag_documents "HTTP/1.1 200 OK"
+2026-09-25 17:22:56 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/rag_documents/points/query/batch "HTTP/1.1 200 OK"
+2026-09-25 17:22:59 [INFO] __main__: step=0 инструмент=search_knowledge_base -> [NodeWithScore(node=TextNode(id_='ea87c482-1297-444b-8eea-5e84a8c64614', embeddi
+2026-09-25 17:23:01 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-25 17:23:01 [INFO] __main__: step=1 инструмент=send_telegram_message -> [TELEGRAM → 12345] Правила подготовки к присяге:
+
+1. Приведение к Военной присяг
+2026-09-25 17:23:03 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-25 17:23:03 [INFO] __main__: step = 2 финальный ответ
