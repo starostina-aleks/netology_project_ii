@@ -281,17 +281,24 @@ class RAGService:
         )
         return scroll_results
 
-    async def retrieve(self,query:str,top_k:int=None):
-        """
-        if self._index is None:
-            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
-        ret_top_k = top_k if top_k is not None else self._settings.rag_top_k
-        retriever = self._index.as_retriever(
-            similarity_top_k=ret_top_k)
-        return retriever.retrieve(query)
-        """
-        nodes = await self._retrieve(query)
-        return nodes[:top_k]
+    async def retrieve(self,query:str,top_k:int=None, filters = None):
+
+        #nodes = await self._retrieve(query)
+        #return nodes[:top_k]
+
+        loc_retriever = self._retriever
+        if filters is not None:
+            loc_retriever = self._index.as_retriever(
+            similarity_top_k=self._settings.rag_retrieved_top_k,
+            sparse_top_k=self._settings.rag_retrieved_top_k,
+            enable_hybrid=True,
+            vector_store_query_mode="hybrid",
+            filters=filters,
+        )
+        nodes = await loc_retriever.aretrieve(query)
+        for postprocessor in self._postprocessor:
+            nodes = postprocessor.postprocess_nodes(nodes, query_str=query)
+        return nodes[:self._settings.rag_rerank_top_k]
 
     def get_prev_text(self,prev_node_id):
         qdrant_client = self._index.vector_store.client

@@ -21,7 +21,9 @@ rag.build()
 #KNOWLEDGE_BASE_URL = "http://localhost:8000"
 
 
-async def search_knowledge_base(query: str) -> str:
+async def search_knowledge_base(query: str,
+                                categories:list[str]=None,
+                                document_ids:list[int]=None) -> str:
     """Поиск ответа во внутренней базе знаний по ключевому слову запроса."""
     """
     normalized = query.lower()
