@@ -1,0 +1,8 @@
+2026-09-28 12:46:16 [INFO] __main__: task = Срочно проверь баланс топливных карт обеспечения ерноморского флота на текущий момент, и если остаток лимита меньше 500 тысяч рублей, отправь уведомление в Telegram дежурному офицеру
+2026-09-28 12:46:18 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-28 12:46:22 [INFO] httpx: HTTP Request: POST http://localhost:8000/rag/query "HTTP/1.1 200 OK"
+2026-09-28 12:46:22 [INFO] __main__: step=0 инструмент = search_knowledge_base -> {'answer': 'В базе знаний нет ответа на этот вопрос.', 'top_score': 0.01600000075995922, 'sources': [], 'confident': False}
+2026-09-28 12:46:23 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-28 12:46:23 [INFO] __main__: step=1 инструмент = get_current_time -> 2026-09-28T11:46:23.769334+03:00
+2026-09-28 12:46:25 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-28 12:46:25 [INFO] __main__: step = 2 финальный ответ
