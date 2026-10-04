@@ -1,5 +1,10 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import httpx
+import requests
+from app.services.rag import RAGService
+from app.core.config import get_settings
+
 # Заглушка базы знаний. В дипломном проекте здесь будет вызов
 # app/services/rag.py (поиск top-1 фрагмента по реальной коллекции).
 _KNOWLEDGE_BASE: dict[str, str] = {
@@ -9,13 +14,32 @@ _KNOWLEDGE_BASE: dict[str, str] = {
     "оплата": "Доступна оплата картой, по СБП и наличными при получении.",
 }
 
+rag = RAGService(get_settings())
+print('service_build...')
+rag.build()
+# Базовый URL вашего развернутого микросервиса базы знаний
+#KNOWLEDGE_BASE_URL = "http://localhost:8000"
 
+
+async def search_knowledge_base(query: str) -> str:
     """Поиск ответа во внутренней базе знаний по ключевому слову запроса."""
+    """
     normalized = query.lower()
+
     for key, value in _KNOWLEDGE_BASE.items():
         if key in normalized:
             return value
     return "По запросу ничего не найдено."
+    """
+    node= await rag.retrieve(query,1)
+    return node[0].text
+
+
+async def post_with_retry(client: httpx.AsyncClient, url: str, **kw):
+    r = await client.post(url, **kw)
+    r.raise_for_status()
+    return r
+
 
 
 def get_current_time(timezone: str = "Europe/Moscow") -> str:
@@ -26,6 +50,9 @@ def get_current_time(timezone: str = "Europe/Moscow") -> str:
 
 def send_telegram_message(chat_id: str, text: str) -> str:
     """Отправка сообщения клиенту в Telegram (в этом задании — заглушка)."""
+    info = f"[TELEGRAM → {chat_id}] {text}"
+    # print(info)
+    return info  # f"Сообщение отправлено в {chat_id}"
 
 
 # Allowlist: имя инструмента -> реализация. Никаких eval/getattr —
@@ -44,6 +71,13 @@ TOOLS = [
         "function": {
             "name": "search_knowledge_base",
             "description": (
+                "Ищет ответ во внутренней базе знаний по документам, по следующим категориям:"
+                "Международные правовые документы\Морские;"
+                "Международные правовые документы\Общие;"
+                "Нормативные документы\Общие уставные документы\Морские уставы;"
+                "Нормативные документы\Общие уставные документы\Общевоинские уставы;"
+                "Нормативные документы\Приказы и указания МО РФ."
+                "Вызывай, когда нужны справочные данные, содержащиеся в нормативных и правовых документах."
             ),
             "parameters": {
                 "type": "object",

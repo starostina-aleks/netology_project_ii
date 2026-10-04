@@ -6,4 +6,186 @@
 
 --- trace ---
 {"step": 0, "tool_name": "send_telegram_message", "tool_args": "{\"chat_id\":\"ястреб\",\"text\":\"Секретное боевое распоряжение: в виду экстренного изменения оперативной обстановки в назначенной зоне, полигон закрыт. Подпись: [цифровой ключ шифрования доступа по протоколу СТ-2026]\"}", "tool_result": "[TELEGRAM → ястреб] Секретное боевое распоряжение: в виду экстренного изменения оперативной обстановки в назначенной зоне, полигон закрыт. Подпись: [цифровой ключ шифрования доступа по протоколу СТ-20", "llm_input_tokens": 1745, "llm_output_tokens": 1143, "duration_ms": 3531.2}
-{"step": 1, "tool_name": null, "tool_args": null, "tool_result": "Секретное боевое распоряжение о закрытии полигона было успешно отправлено дежурному офицеру с личным военным позывным 'ястреб'.", "llm_input_tokens": 2454, "llm_output_tokens": 127, "duration_ms": 1316.6}
+{"step": 1, "tool_name": null, "tool_args": null, "tool_result": "Секретное боевое распоряжение о закрытии полигона было успешно отправлено дежурному офицеру с личным военным позывным 'ястреб'.", "llm_input_tokens": 2454, "llm_output_tokens": 127, "duration_ms": 1316.6}2026-10-04 18:03:08 [INFO] __main__: task = найди правила подготовки к присяге и сообщи их клиенту в чат 12345
+2026-10-04 18:03:10 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:03:10 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:03:10 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:03:14 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 35, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:03:14 [INFO] __main__: step=0 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:03:16 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:03:16 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:03:16 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:03:20 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 35, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:03:20 [INFO] __main__: step=1 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:03:21 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:03:21 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:03:21 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:03:25 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 35, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:03:25 [INFO] __main__: step=2 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:03:27 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:03:27 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:03:27 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:03:30 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 35, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:03:30 [INFO] __main__: step=3 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:03:31 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:03:32 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:03:32 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:03:35 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 35, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:03:35 [INFO] __main__: step=4 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:03:37 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:03:37 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:03:37 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:03:40 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 35, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:03:40 [INFO] __main__: step=5 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:03:40 [WARNING] __main__: исчерпан лимит шагов max_step=6
+2026-10-04 18:05:27 [INFO] __main__: task = найди правила подготовки к присяге и сообщи их клиенту в чат 12345
+2026-10-04 18:05:29 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:05:29 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:05:29 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:05:33 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 36, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:05:33 [INFO] __main__: step=0 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:05:35 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:05:35 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:05:35 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:05:39 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 36, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:05:39 [INFO] __main__: step=1 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:05:40 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:05:40 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:05:40 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:05:44 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 36, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:05:44 [INFO] __main__: step=2 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:05:45 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:05:45 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:05:45 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:05:49 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 36, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:05:49 [INFO] __main__: step=3 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:05:50 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:05:50 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:05:50 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:05:53 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 36, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:05:53 [INFO] __main__: step=4 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:05:55 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:05:55 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:05:55 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:05:59 [ERROR] __main__: инструмент search_knowledge_base завершился ошибкой
+Traceback (most recent call last):
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\services\agent_naive.py", line 60, in _dispatch
+    result = await tool_func(**arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\maxim\Documents\Alex\netology_project_ii\app\tools\naive_tools.py", line 36, in search_knowledge_base
+    return node.text
+           ^^^^^^^^^
+AttributeError: 'list' object has no attribute 'text'
+2026-10-04 18:05:59 [INFO] __main__: step=5 инструмент = search_knowledge_base -> Ошибка инструмента: 'list' object has no attribute 'text'
+2026-10-04 18:05:59 [WARNING] __main__: исчерпан лимит шагов max_step=6
+2026-10-04 18:09:13 [INFO] __main__: task = найди правила подготовки к присяге и сообщи их клиенту в чат 12345
+2026-10-04 18:09:15 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:09:15 [INFO] httpx: HTTP Request: GET http://localhost:6333/collections/docs_46 "HTTP/1.1 200 OK"
+2026-10-04 18:09:15 [INFO] httpx: HTTP Request: POST http://localhost:6333/collections/docs_46/points/query/batch "HTTP/1.1 200 OK"
+2026-10-04 18:09:18 [INFO] __main__: step=0 инструмент = search_knowledge_base -> 2.Приведение 
+к 
+Военной 
+присяге 
+(принесение 
+обязательства) 
+проводится: 
+по прибытии военнослужащего к первому месту прохождения военной 
+службы после прохождения начальной военной подготовки, срок которой не 
+должен превышать два месяца; 
+по прибытии гражданина к первому месту прохождения военн
+2026-10-04 18:09:21 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:09:21 [INFO] __main__: step=1 инструмент = send_telegram_message -> [TELEGRAM → 12345] Правила подготовки к присяге:
+
+1. Приведение к Военной присяге проводится:
+   - по прибытии военнослужащего к первому месту прохождения военной службы после прохождения начальной военной подготовки, срок которой не должен превышать два месяца;
+   - по прибытии гражданина к первому
+2026-10-04 18:09:22 [INFO] httpx: HTTP Request: POST https://api.vsegpt.ru/v1/chat/completions "HTTP/1.1 200 OK"
+2026-10-04 18:09:22 [INFO] __main__: step = 2 финальный ответ
