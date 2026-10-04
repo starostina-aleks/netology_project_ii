@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     model_condense:str = "gpt-4o mini"
 
     rate_limit_per_min: int = 30
-    https_proxy: str
+    https_proxy: str = ""
     phoenix_enabled: bool = False
     phoenix_collector_endpoint: str = "http://localhost:6006"
 
@@ -78,9 +78,6 @@ class Settings(BaseSettings):
     # Включить OpenAI Moderation API (layer 2 каскада). Если False —
     # только regex-блоклист.
     moderation_use_openai: bool = True
-
-
-
 
 
 @lru_cache

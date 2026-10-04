@@ -5,6 +5,7 @@ from llama_index.core.schema import TransformComponent
 from llama_index.core.schema import BaseNode, TextNode
 from app.core.config import get_settings
 import nltk
+nltk.download('punkt_tab')
 from llama_index.core.utils import get_tokenizer
 import json
 

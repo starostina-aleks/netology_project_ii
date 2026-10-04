@@ -9,7 +9,7 @@ from llama_index.core.ingestion import IngestionPipeline, DocstoreStrategy
 from llama_index.core.node_parser import SentenceSplitter,MarkdownNodeParser
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.vector_stores.qdrant import QdrantVectorStore
-
+import json
 from pydantic_core.core_schema import format_ser_schema
 
 from app.core.config import Settings as AppSettings,get_settings
@@ -55,47 +55,22 @@ def ingest_stats(input_files:list[Path])->None:
 def doc_type_from_path(path:str)->str:
     return Path(path).suffix.lstrip(".").lower() or "unknown"
 
-
-def category_from_path1(file_path: str,data_dir:Path|None=None) -> str:
+def data_from_path(file_path: str, data_dir: Path | None = None) -> dict:
     if data_dir is None:
-        return "unknown"
-    data_dir = data_dir.resolve()
-    abs_file_path = Path(file_path).resolve()
+        return {"folder_path": "", "folder_parts": []}
+
     try:
-        relative_path = abs_file_path.relative_to(data_dir)
-        folder_hierarchy = relative_path.parent
-        hierarchy_str = str(folder_hierarchy).replace("\\", " / ").replace("/", " / ")
+        relative = Path(file_path).resolve().relative_to(data_dir.resolve()).parent
     except ValueError:
-         hierarchy_str = "unknown"
+        return {"folder_path": "", "folder_parts": []}
 
-    return hierarchy_str
+    if relative == Path("."):
+        return {"folder_path": "", "folder_parts": []}
 
-
-def category_from_path(file_path: str, data_dir: Path | None = None) -> str:
-    if data_dir is None:
-        return "unknown"
-    data_dir = data_dir.resolve()
-    abs_file_path = Path(file_path).resolve()
-    try:
-        relative_path = abs_file_path.relative_to(data_dir)
-        path_parts = relative_path.parts
-        # Если файл лежит прямо в корне data_dir (нет папки категории)
-        if len(path_parts) <= 1:
-            return "unknown"
-        return path_parts[0]
-
-    except ValueError:
-        return "unknown"
-
-
-def file_metadata(path: str) -> dict:
-    #print("file_metadata",path,Path(path).name)
     return {
-        "source_file": Path(path).name,
-        "doc_type": doc_type_from_path(path),
-        "indexed_at": date.today().isoformat(),
-        "source_path":path
-        }
+        "folder_path": str(relative),
+        "folder_parts": list(relative.parts),
+    }
 
 def clean(text:str)->str:
     text = re.sub(r"Стр\.\s*\d+\s*из\s*\d+", "", text)
@@ -124,7 +99,7 @@ def mark_as_failed(path_str,reason:str):
 class IngestionService:
     def __init__(self,settings: AppSettings,embed_model):
         self._settings = settings
-        self._data_dir=settings.rag_data_dir
+        self._data_dir=settings.rag_data_dir/"knowledge_base"
         self._docstore_path=self._data_dir.parent/f"{settings.rag_collection}_docstore.json"
         self._docstore = self._load_docstore()
         self._embed_model = embed_model
@@ -144,6 +119,17 @@ class IngestionService:
             batch_size=20
         )
         self._pipeline=self._build_pipeline()
+        self._manifest_docs=self._get_manifest_docs()
+
+    def _get_manifest_docs(self):
+        docs_json = self._settings.rag_data_dir/"documents.json"
+        try:
+            with open(docs_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("documents",None)
+        except FileNotFoundError:
+            return None
+
     def is_collection_empty(self)->bool:
         if not self._client.collection_exists(self._settings.rag_collection):
             return True
@@ -181,20 +167,16 @@ class IngestionService:
         if not documents:
             return []
 
-        # 1. Группируем документы по исходному файлу
-        # Используем source_path, который вы гарантированно заполняете в метаданных
         docs_by_files = defaultdict(list)
         for doc in documents:
             file_path = doc.metadata.get("source_path")
             if file_path:
                 docs_by_files[file_path].append(doc)
             else:
-                # На всякий случай фолбэк, если source_path почему-то пуст
                 docs_by_files["unknown_file.txt"].append(doc)
 
         final_nodes = []
 
-        # 2. Обходим каждый файл отдельно
         for file_path, file_docs in docs_by_files.items():
             file_name = os.path.basename(file_path)
             _, ext = os.path.splitext(file_name.lower())
@@ -205,12 +187,10 @@ class IngestionService:
             print(f"🚀 Пайплайн: Обработка файла '{file_name}' ({len(file_docs)} док.) с трансформациями для {ext or 'default'}")
 
             self._pipeline.transformations=current_transformations
-            # Запускаем конвейер для пачки документов ОДНОГО файла
             nodes = self._pipeline.run(
                 documents=file_docs
             )
             final_nodes.extend(nodes)
-
         return final_nodes
 
 
@@ -220,7 +200,6 @@ class IngestionService:
 
     def ingest_all(self)->int:
         documents=self._read()
-        #nodes=self._pipeline.run(documents=documents,show_progress=False)
         nodes=self.ingest_documents(documents)
         self._persist_docstore()
         logger.info(
@@ -248,6 +227,25 @@ class IngestionService:
         )
         return len(nodes)
 
+    def file_metadata(self,path: str) -> dict:
+        meta= {
+            "source_file": Path(path).name,
+            "doc_type": doc_type_from_path(path),
+            "indexed_at": date.today().isoformat(),
+            "source_path": path,
+            **data_from_path(path, self._data_dir),
+        }
+        if self._manifest_docs is not None:
+            result = next(
+                (item for item in self._manifest_docs if item.get("file") == path),
+                None
+            )
+            if result:
+                meta["id_document"] = result.get("id")
+                meta["title"] = result.get("title")
+        return meta
+
+
     def _read(self,input_files:list[Path]|None=None)->list[Document]:
         file_extractor = {
             ".pdf": PyMuPDFReader(),  # Заменяем стандартный PDFReader на PyMuPDF
@@ -255,16 +253,17 @@ class IngestionService:
             ".html": HTMLTagReader(tag="body"),  # Явно указываем парсить только тег body
             ".md": MarkdownReader()
         }
+
         reader = SimpleDirectoryReader(
             input_dir=self._data_dir if input_files is None else None,
             input_files=[str(p) for p in input_files] if input_files else None,
             recursive=input_files is None,
             required_exts=supported_extensions,
-            file_metadata= file_metadata,
+            file_metadata= self.file_metadata,
             filename_as_id=True,
             file_extractor=file_extractor,
         )
-        documents=reader.load_data()
+        documents=enrich(reader.load_data())
         docs_by_files=defaultdict(list)
         for doc in documents:
             file_path=doc.metadata.get("source_path")
@@ -285,8 +284,6 @@ class IngestionService:
         valid_documents=[
             doc for doc in documents if doc.metadata.get("source_path") not in failed_files
         ]
-        for doc in valid_documents:
-                doc.metadata["category"]=category_from_path(doc.metadata["source_path"], self._data_dir)
         return valid_documents
 
 if __name__=="__main__":

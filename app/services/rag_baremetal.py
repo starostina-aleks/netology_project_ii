@@ -50,7 +50,7 @@ class RAGBaremetalService:
         self.embed_model = SentenceTransformer(model_path)
         self.embed_client = EmbeddingsClient(self.embed_model)
         self.llm = AsyncOpenAI(
-            http_client=DefaultAsyncHttpxClient(proxy=settings.https_proxy),
+            #http_client=DefaultAsyncHttpxClient(proxy=settings.https_proxy),
             base_url=settings.llm.base_url,
             api_key=settings.llm.openai_api_key.get_secret_value()
         )
@@ -134,6 +134,7 @@ class RAGBaremetalService:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role":"user","content": f"Контекст:\n{context}\n\nВопрос:{query}"},
             ],
+            max_tokens=1024
 
         )
         top_score = max((node.score or 0.0 for node in hits),default=0.0)

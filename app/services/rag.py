@@ -32,18 +32,6 @@ QA_PROMPT = PromptTemplate(
     "Вопрос: {query_str}\n"
     "Ответ: "
 )
-"""
-
-QA_PROMPT = PromptTemplate(
-    "Ниже - пронумерованные источники из  базы знаний.\n"
-    "---------------------\n{context_str}\n---------------------\n"
-    "Ответь на вопрос, опираясь ТОЛЬКО на источники."
-    "Если ответа в источниках нет — честно напиши, что не нашёл его в базе знаний,"
-    "и ничего  не выдумывай. Отвечай по-русски, коротко и по делу.\n"
-    "Вопрос: {query_str}\n"
-    "Ответ: "
-)
-"""
 
 REFUSAL_TEXT="В базе знаний нет ответа на этот вопрос."
 
@@ -71,12 +59,21 @@ def build_sources(source_nodes:list[NodeWithScore]) -> list[dict]:
     return sources
 
 class RAGService:
-    def __init__(self,settings:AppSettings,embed_model,nodes:list[BaseNode] =None,splitter=None)->None:
+    def __init__(self,settings:AppSettings,embed_model = None,nodes:list[BaseNode] =None,splitter=None)->None:
         self._postprocessor: list = []
         self._settings = settings
-        Settings.embed_model = embed_model
-        sync_client = httpx.Client(proxy=settings.https_proxy)
-        async_client = httpx.AsyncClient(proxy=settings.https_proxy)
+        embed_model = embed_model
+        sync_client = httpx.Client()#proxy=settings.https_proxy)
+        async_client = httpx.AsyncClient()#proxy=settings.https_proxy)
+        if embed_model is None:
+            Settings.embed_model = HuggingFaceEmbedding(
+                model_name=settings.embedding_model,
+                device="cpu",
+                embed_batch_size=8,
+            )
+        else:
+            Settings.embed_model = embed_model
+
         Settings.llm=OpenAILike(
             model=settings.rag_llm_model,
             api_base=settings.llm.base_url,
@@ -111,6 +108,8 @@ class RAGService:
             model=settings.rag_rerank_model,
             top_n=settings.rag_rerank_top_k
         )
+
+
 
     def build(self)->None:
         vector_store = QdrantVectorStore(aclient=self._aclient,
@@ -262,7 +261,7 @@ class RAGService:
             "answer": parse_citations(str(response),sources),
             "top_score": round(top_score, 3),
             "sources": sources,
-            "confident": False,
+            "confident": True,
             "generation_latency_sec": end_generation - start_generation
         }
 
@@ -285,6 +284,7 @@ class RAGService:
         limit=10000
         )
         return scroll_results
+
     def retrieve(self,query:str,top_k:int=None):
         if self._index is None:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
@@ -324,21 +324,11 @@ class RAGService:
 
 
 async def main():
-    print('start main')
-    model_path = r'F:\embeddings\multilingual-e5-base'
-
-
-    embed_model = HuggingFaceEmbedding(
-        model_name=model_path,
-        device="cpu",
-        embed_batch_size=8,
-    )
-    
-    service = RAGService(get_settings(),embed_model=embed_model)
+    service = RAGService(get_settings())
     print('service_build...')
     service.build()
-    query="Какие обязанности командира корабля?"
-    res=await service.evaluate_inputs(query)
+    query="Какие обязанности у командира корабля?"
+    res=await service.answer(query)
     print(res)
     await service.close()
   

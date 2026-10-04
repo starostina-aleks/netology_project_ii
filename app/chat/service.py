@@ -156,7 +156,10 @@ class ChatService:
         return content.strip()
 
     def build_messages(self,history: list[ChatMessage],system_prompt) -> list[dict]:
-        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+        messages: list[dict] = []
+        if system_prompt is not None:
+            messages.append({ "role": "system", "content": system_prompt, })
         for m in history:
             messages.append(_message_content_for_llm(m))
         return fit_to_budget(messages)
@@ -174,9 +177,10 @@ class ChatService:
         old, recent = history[:-KEEP_RECENT], history[-KEEP_RECENT:]
         old_as_msgs = [Message(role=m.role,content=m.content) for m in old]
         summary = await self.summarize(old_as_msgs)
-
-        messages = [{"role": "system", "content": system_prompt},
-                    {"role": "system", "content": f"Контекст из предыдущей беседы: {summary}"}]
+        messages: list[dict] = []
+        if system_prompt is not None:
+            messages.append({ "role": "system", "content": system_prompt, })
+        messages.append({"role": "system", "content": f"Контекст из предыдущей беседы: {summary}"})
         for m in recent:
             messages.append(_message_content_for_llm(m))
         return messages
@@ -234,6 +238,7 @@ class ChatService:
                 history=messages[:-1],
                 use_condense=self.use_condense
             )
+            #print("RAG_CONTEXT",rag_context)
 
             if not rag_context.get("confident"):
                 yield {"type":"token","delta":rag_context.get("text")}
@@ -250,6 +255,7 @@ class ChatService:
                 return
             messages=messages[:-1]
             sources=rag_context.get("sources")
+            print("RAG_CONTEXT",rag_context.get("text"))
             messages.append(
                 {
                     "role": "system",
@@ -257,6 +263,7 @@ class ChatService:
                 },
             )
         buffer = ""
+        print("MESSAGES",messages)
         stream=  await self.llm_client.chat.completions.create(
             model=settings.llm.default_model,
             messages=messages,
