@@ -33,7 +33,6 @@ def _trace_entry(
         "duration_ms": duration_ms,
     }
 
-def _dispatch(name: str, raw_args: str) -> str:
     """Вызывает инструмент из allowlist; любую проблему возвращает строкой модели."""
     if name not in DISPATCH:
         return f"Ошибка: инструмент '{name}' недоступен. Доступные: {sorted(DISPATCH)}"
@@ -42,18 +41,15 @@ def _dispatch(name: str, raw_args: str) -> str:
     except json.JSONDecodeError as exc:
         return f"Ошибка: не удалось разобрать аргументы ({exc})"
     try:
-        return str(DISPATCH[name](**arguments))
     except Exception as exc:
         logger.exception("инструмент %s завершился ошибкой", name)
         return f"Ошибка инструмента: {exc}"
 
-def run_agent(
         task: str,
         max_steps: int = 6,
         model: str = settings.llm.default_model,
         client: OpenAI | None = None,
 )->dict:
-    client=client or OpenAI()
     messages: list = [{"role": "user", "content": task}]
     trace: list[dict] = []
     for step in range(max_steps):
@@ -83,31 +79,23 @@ def run_agent(
         for call in message.tool_calls:
             name = call.function.name
             raw_args = call.function.arguments
-            result = _dispatch(name, raw_args)
             trace.append(
                 _trace_entry(
                     step, name, raw_args, result, input_tokens, output_tokens, duration_ms
                 )
             )
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result })
-            logger.info("step=%d инструмент=%s -> %s", step, name, result[:80])
 
     logger.warning("исчерпан лимит шагов max_step=%d", max_steps)
     return {"answer": None, "step": max_steps, "trace": trace, "error": "max_steps"}
 
-def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Наивный агент на Chat Completions")
     parser.add_argument("task", help="Задача для агента")
     parser.add_argument("--max-steps", type=int, default=6, help="Лимит шагов (guardrail)")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Модель Chat Completions")
-    parser.add_argument("--trace", action="store_true", help="Печатать пошаговую трассу")
     args = parser.parse_args(argv)
-
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    result = run_agent(args.task, max_steps=args.max_steps, model=args.model)
 
     if result.get("error"):
-        print(f"Остановка: {result['error']} (шагов: {result['steps']})")
     else:
         print(result["answer"])
 
@@ -117,6 +105,4 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(entry, ensure_ascii=False))
     return 0
 
-
 if __name__ == "__main__":
-    raise SystemExit(main())

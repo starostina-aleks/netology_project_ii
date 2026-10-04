@@ -59,21 +59,19 @@ def build_sources(source_nodes:list[NodeWithScore]) -> list[dict]:
     return sources
 
 class RAGService:
-    def __init__(self,settings:AppSettings,embed_model = None,nodes:list[BaseNode] =None,splitter=None)->None:
+    def __init__(self,settings:AppSettings,embed_model=None,nodes:list[BaseNode] =None,splitter=None)->None:
         self._postprocessor: list = []
         self._settings = settings
-        embed_model = embed_model
-        sync_client = httpx.Client()#proxy=settings.https_proxy)
-        async_client = httpx.AsyncClient()#proxy=settings.https_proxy)
         if embed_model is None:
-            Settings.embed_model = HuggingFaceEmbedding(
+            embed_model = HuggingFaceEmbedding(
                 model_name=settings.embedding_model,
                 device="cpu",
                 embed_batch_size=8,
             )
-        else:
-            Settings.embed_model = embed_model
 
+        Settings.embed_model = embed_model
+        sync_client = httpx.Client(proxy=settings.https_proxy)
+        async_client = httpx.AsyncClient(proxy=settings.https_proxy)
         Settings.llm=OpenAILike(
             model=settings.rag_llm_model,
             api_base=settings.llm.base_url,
@@ -108,8 +106,6 @@ class RAGService:
             model=settings.rag_rerank_model,
             top_n=settings.rag_rerank_top_k
         )
-
-
 
     def build(self)->None:
         vector_store = QdrantVectorStore(aclient=self._aclient,
@@ -285,13 +281,17 @@ class RAGService:
         )
         return scroll_results
 
-    def retrieve(self,query:str,top_k:int=None):
+    async def retrieve(self,query:str,top_k:int=None):
+        """
         if self._index is None:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
         ret_top_k = top_k if top_k is not None else self._settings.rag_top_k
         retriever = self._index.as_retriever(
             similarity_top_k=ret_top_k)
         return retriever.retrieve(query)
+        """
+        nodes = await self._retrieve(query)
+        return nodes[:top_k]
 
     def get_prev_text(self,prev_node_id):
         qdrant_client = self._index.vector_store.client
@@ -324,11 +324,21 @@ class RAGService:
 
 
 async def main():
-    service = RAGService(get_settings())
+    print('start main')
+    model_path = r'F:\embeddings\multilingual-e5-base'
+
+
+    embed_model = HuggingFaceEmbedding(
+        model_name=model_path,
+        device="cpu",
+        embed_batch_size=8,
+    )
+    
+    service = RAGService(get_settings(),embed_model=embed_model)
     print('service_build...')
     service.build()
-    query="Какие обязанности у командира корабля?"
-    res=await service.answer(query)
+    query="Какие обязанности командира корабля?"
+    res=await service.evaluate_inputs(query)
     print(res)
     await service.close()
   

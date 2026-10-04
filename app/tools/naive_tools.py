@@ -1,6 +1,5 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
 # Заглушка базы знаний. В дипломном проекте здесь будет вызов
 # app/services/rag.py (поиск top-1 фрагмента по реальной коллекции).
 _KNOWLEDGE_BASE: dict[str, str] = {
@@ -11,7 +10,6 @@ _KNOWLEDGE_BASE: dict[str, str] = {
 }
 
 
-def search_knowledge_base(query: str) -> str:
     """Поиск ответа во внутренней базе знаний по ключевому слову запроса."""
     normalized = query.lower()
     for key, value in _KNOWLEDGE_BASE.items():
@@ -28,8 +26,6 @@ def get_current_time(timezone: str = "Europe/Moscow") -> str:
 
 def send_telegram_message(chat_id: str, text: str) -> str:
     """Отправка сообщения клиенту в Telegram (в этом задании — заглушка)."""
-    print(f"[TELEGRAM → {chat_id}] {text}")
-    return f"Сообщение отправлено в {chat_id}"
 
 
 # Allowlist: имя инструмента -> реализация. Никаких eval/getattr —
@@ -48,9 +44,6 @@ TOOLS = [
         "function": {
             "name": "search_knowledge_base",
             "description": (
-                "Ищет ответ во внутренней базе знаний компании: правила возврата, "
-                "условия доставки, гарантия, способы оплаты. Вызывай, когда нужны "
-                "фактические данные о товарах или политике обслуживания клиента."
             ),
             "parameters": {
                 "type": "object",
