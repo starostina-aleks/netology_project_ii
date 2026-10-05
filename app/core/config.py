@@ -1,8 +1,8 @@
 from functools import lru_cache
+from pathlib import Path
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Literal
-from pathlib import Path
 
 
 class LLMSettings(BaseSettings):
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     model_condense:str = "gpt-4o mini"
 
     rate_limit_per_min: int = 30
-    https_proxy: str
+    https_proxy: str = ""
     phoenix_enabled: bool = False
     phoenix_collector_endpoint: str = "http://localhost:6006"
 
@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     eval_judge_provider: Literal["anthropic", "openai"] = "openai"
     eval_judge_model: str = "anthropic/claude-sonnet-4.6-thinking-high" #"claude-sonnet-4-6"
+    #Admin====================================================
+    admin_token: SecretStr = SecretStr("change-me-admin")
+    # Включить OpenAI Moderation API (layer 2 каскада). Если False —
+    # только regex-блоклист.
+    moderation_use_openai: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,126 +1,180 @@
+from datetime import datetime
 import json
-from app.tools.naive_tools import search_knowledge_base
+from zoneinfo import ZoneInfo
 
-def db_get_crew_manifest(role_or_department: str) -> str:
-    """Возвращает данные об экипаже, должностях и обязанностях по БЖ."""
-    db = {
-        "БЧ-5": [
-            {"rank": "Капитан 3 ранга", "name": "Иванов И.И.", "role": "Командир БЧ-5 (электромеханическая)", "bj_duty": "Руководитель борьбы за живучесть в центральном посту (КПП-5)"},
-            {"rank": "Старший лейтенант", "name": "Петров П.П.", "role": "Командир дивизиона живучести (КДЖ)", "bj_duty": "Командир Главного командного пункта БЖ (ГКП БЖ) при отсутствии командира БЧ-5"},
-            {"rank": "Мичман", "name": "Сидоров С.С.", "role": "Старшина команды трюмных", "bj_duty": "Командир носовой аварийной партии"}
-        ],
-        "Дежурная служба": [
-            {"rank": "Капитан-лейтенант", "name": "Смирнов А.В.", "role": "Дежурный по кораблю", "bj_duty": "При объявлении тревоги осуществляет общее руководство до прибытия командира"}
-        ]
-    }
-    return json.dumps(db.get(role_or_department, "Подразделение не найдено."), ensure_ascii=False)
+from app.core.config import get_settings
+from  pathlib import Path
+from app.services.rag import RAGService
+from llama_index.core.vector_stores import MetadataFilter, MetadataFilters, FilterOperator
+from pydantic import BaseModel, Field
+from openai import OpenAI
 
-def db_get_compartment_status(compartment_name: str) -> str:
-    """Возвращает схему отсека, стационарные системы пожаротушения и водоотлива."""
-    db = {
-        "Кормовое машинное отделение": {
-            "boundaries": "Шпангоуты 70-85",
-            "adjacent_compartments": "Носовое машинное отделение (шп. 55-70), Румпельное отделение (шп. 85-100)",
-            "fire_systems": "Система объемного химического тушения (ОХТ), стационарная система водяного пожаротушения. Состояние: Исправны.",
-            "drainage_systems": "Трюмный насос ЭТН-100 (100 куб.м/час). Состояние: Исправен."
-        },
-        "Румпельное отделение": {
-            "boundaries": "Шпангоуты 85-100",
-            "fire_systems": "Система водяного орошения. Состояние: Исправна.",
-            "drainage_systems": "Осусушающий эжектор ЭВ-30. Состояние: Исправен."
+settings = get_settings()
+rag = RAGService(get_settings())
+print('service_build...')
+rag.build()
+client = OpenAI(
+        api_key=settings.llm.openai_api_key.get_secret_value(),
+        base_url=settings.llm.base_url
+)
+def get_knowledge_map():
+    result = []
+    input_json_path=settings.rag_data_dir/"documents.json"
+    with open(input_json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+        documents = data["documents"]
+        for doc in documents:
+            result.append({
+                "id": doc["id"],
+                "title": doc["title"],
+                "category": [
+                    part.strip()
+                    for part in doc["category"].split("/")
+                    if part.strip()
+                ],
+                "file": Path(doc["file"]).name,
+         })
+    return result
+
+
+async def search_knowledge_base(
+    query: str,
+    categories: list[str] | None = None,
+    document_ids: list[int] | None = None,
+):
+    filters = []
+
+    if categories:
+        filters.append(
+            MetadataFilter(
+                key="folder_parts",
+                value=categories,
+                operator=FilterOperator.IN,
+            )
+        )
+
+    if document_ids:
+        filters.append(
+            MetadataFilter(
+                key="id_document",
+                value=document_ids,
+                operator=FilterOperator.IN,
+            )
+        )
+
+    metadata_filters = MetadataFilters(filters=filters) if filters else None
+    result = await rag.retrieve(query, 1,metadata_filters)
+    return result
+
+
+class DecompositionArgs(BaseModel):
+    user_query: str = Field(..., description="Исходный сложный запрос пользователя.")
+
+
+def query_decomposition(user_query: str) -> list[str]:
+    """
+    Разбивает сложный пользовательский запрос на массив простых атомарных подзапросов.
+    """
+    SYSTEM_PROMPT = """
+        Ты — аналитический модуль RAG-системы. Твоя задача — разобрать сложный или многосоставной запрос пользователя на несколько простых, независимых подзапросов.
+
+        ### Правила:
+        1. Выделяй только те подзапросы, которые требуют поиска в базе знаний (факты, правила, инструкции).
+        2. Каждый подзапрос должен быть сформулирован как самостоятельный и законченный поисковый запрос (без местоимений вроде "там", "куда").
+        3. Если запрос простой и не требует разделения, верни список, содержащий только один исходный запрос.
+        4. Отвечай СТРОГО в формате JSON-объекта, без каких-либо вступлений или markdown-тегов.
+
+        ### Формат ответа:
+        {
+            "sub_queries": ["подзапрос 1", "подзапрос 2", ...]
         }
-    }
-    return json.dumps(db.get(compartment_name, "Отсек не найден в схеме корабля."), ensure_ascii=False)
+
+        """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"User: {user_query}"}
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+            max_tokens=1024,
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result
+    except Exception as e:
+        print(f"Ошибка декомпозиции: {e}")
+        return [user_query]  # В случае ошибки возвращаем исходный запрос
 
 
-def db_get_weather_and_sea() -> str:
+
+
+class RewriterArgs(BaseModel):
+    sub_query: str = Field(..., description="Атомарный запрос (возможно, разговорный), требующий оптимизации.")
+
+
+def query_rewriter(sub_query:str) -> str:
     """
-    Возвращает актуальные метеорологические и гидрологические условия
-    в районе нахождения корабля.
+    Превращает разговорный запрос в профессиональную поисковую фразу для multilingual-e5-base.
     """
-    weather_db = {
-        "status": "success",
-        "timestamp": "2026-09-29T16:40:00Z",
-        "telemetry": {
-            "sea_state_points": 6,  # Волнение моря: 6 баллов (Крупные волны, повсюду белые капны)
-            "wave_height_meters": 4.5,  # Высота волны: 4.5 метра
-            "wind_speed_mps": 14.5,  # Скорость ветра: 14.5 м/с (Крепкий ветер)
-            "wind_direction_degrees": 280,  # Направление ветра: Вест-Норд-Вест (WNW)
-            "air_temperature_celsius": 11.0,  # Температура воздуха: +11°C
-            "water_temperature_celsius": 8.5,  # Температура воды: +8.5°C
-            "visibility_miles": 4.0  # Видимость: 4 мили (Умеренная)
-        },
-        "warnings": [
-            "Штормовое предупреждение в данном квадрате.",
-            "Время безопасного нахождения человека в воде при температуре +8.5°C составляет не более 30-45 минут."
-        ]
-    }
+    SYSTEM_PROMPT = """
+        Ты — эксперт по поисковой оптимизации для векторной модели эмбеддингов multilingual-e5-base. Твоя задача — переписать разговорный, сумбурный или ошибочный запрос пользователя в точную, академичную или техническую поисковую фразу, которая используется в официальной документации и базах знаний.
 
-    return json.dumps(weather_db, ensure_ascii=False, indent=2)
+        ### Правила:
+        1. Очищай запрос от эмоционального шума, приветствий и лишних слов ("че делать", "плиз", "сломалась", "караул").
+        2. Заменяй разговорные формулировки на общепринятые технические термины, названия ошибок или официальные регламенты.
+        3. Сохраняй исходный язык запроса (если пользователь пишет на русском — оптимизируй на русском).
+        4. Возвращай СТРОГО JSON-объект. Никакого лишнего текста.
+
+        ### Формат ответа:
+        {
+          "optimized_query": "строка с оптимизированным запросом"
+        }
+
+        """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"User: {sub_query}"}
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+            max_tokens=1024,
+
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result
+    except Exception as e:
+        print(f"Ошибка переписывания запроса: {e}")
+        return sub_query
 
 
-def db_get_damage_control_status(compartment: str) -> str:
-    """Возвращает наличие и готовность аварийного имущества (АСИ) в отсеке."""
-    db = {
-        "Кормовое машинное отделение": "Аварийный пост №3: Огнетушители ОУ-5 (4 шт) — норма; Аварийный пластырь 1.5х1.5м — 1 шт — норма; Раздвижные упоры — 2 шт — норма.",
-        "Румпельное отделение": "Аварийный пост №4: Огнетушители ОУ-5 (2 шт) — норма; Клинья и пробки сосновые — комплект — норма; Брусья аварийные — 4 шт."
-    }
-    return db.get(compartment, "Данные по АСИ отсека отсутствуют.")
+def get_current_time(timezone: str = "Europe/Moscow") -> str:
+    """Текущие дата и время в указанном часовом поясе в формате ISO 8601."""
+    now = datetime.now(ZoneInfo(timezone))
+    return now.isoformat()
 
 
-def db_check_rescue_crafts() -> str:
-    """
-    Возвращает статус готовности спасательных плавсредств корабля
-    и их предельные тактико-технические характеристики (ТТХ) по погоде.
-    """
-    # Реальные ТТХ корабельных плавсредств (например, для БЛ-820 допуск обычно до 4-5 баллов)
-    crafts_db = {
-        "status": "success",
-        "ship_assets": [
-            {
-                "name": "Скоростная бортовая лодка БЛ-820",
-                "id": "BL-01",
-                "readiness": "Готова к спуску (дежурная)",
-                "limitations": {
-                    "max_sea_state_points": 4,  # Максимальное волнение моря: 4 балла
-                    "min_water_temp_celsius": 0
-                },
-                "location": "Правый борт, шлюпбалка №1"
-            },
-            {
-                "name": "Рабочий катер проекта 1400М",
-                "id": "RK-02",
-                "readiness": "В техническом резерве (время подготовки — 30 минут)",
-                "limitations": {
-                    "max_sea_state_points": 5,  # Максимальное волнение моря: 5 баллов
-                    "min_water_temp_celsius": -2
-                },
-                "location": "Левый борт, крановая установка"
-            },
-            {
-                "name": "Спасательные плоты ПСН-20М",
-                "id": "PSN-ALL",
-                "readiness": "Готовы к сбросу автоматически/вручную",
-                "limitations": {
-                    "max_sea_state_points": 8,  # Плот можно сбрасывать в сильный шторм
-                    "min_water_temp_celsius": -5
-                },
-                "location": "Верхняя палуба, вдоль бортов"
-            }
-        ],
-        "note": "Внимание: Согласно Руководству по управлению лодками, спуск БЛ-820 на ходу при волнении выше 4 баллов категорически запрещен из-за риска опрокидывания при отдавании шлюп canard'ов."
-    }
-
-    return json.dumps(crafts_db, ensure_ascii=False, indent=2)
+def send_telegram_message(chat_id: str, text: str) -> str:
+    """Отправка сообщения клиенту в Telegram (в этом задании — заглушка)."""
+    info = f"[TELEGRAM → {chat_id}] {text}"
+    # print(info)
+    return info  # f"Сообщение отправлено в {chat_id}"
 
 # Словарь для ReAct-цикла
 DISPATCH = {
-    "db_get_crew_manifest": db_get_crew_manifest,
-    "db_get_compartment_status": db_get_compartment_status,
-    "db_get_damage_control_status": db_get_damage_control_status,
     "search_knowledge_base": search_knowledge_base,
-    "db_check_rescue_crafts": db_check_rescue_crafts,
-    "db_get_weather_and_sea": db_get_weather_and_sea,
+    "get_knowledge_map":get_knowledge_map,
+    "get_current_time": get_current_time,
+    "send_telegram_message": send_telegram_message,
+    "query_rewriter": query_rewriter,
+    "query_decomposition": query_decomposition
+
 }
 
 TOOLS = [
@@ -129,9 +183,10 @@ TOOLS = [
         "function": {
             "name": "search_knowledge_base",
             "description": (
-                "Ищет ответ во внутренней базе знаний по Корабельному уставу ВМФ, уставам и регламентам Вооруженных Сил РФ, "
-                "правилам судоходства, финансам, кадрам и социальному обеспечению военных организаций."
-                "Вызывай, когда нужны справочные данные, содержащиеся в нормативных документах."
+                "Ищет информацию во внутренней базе знаний по содержимому документов. "
+                "Вызывай, когда для ответа на запрос пользователя нужны данные из базы знаний. "
+                "При наличии подходящей категории или документа используй их для сужения области поиска. "
+                "Если релевантная категория или документ неизвестны, выполняй поиск без фильтров."
             ),
             "parameters": {
                 "type": "object",
@@ -139,7 +194,26 @@ TOOLS = [
                     "query": {
                         "type": "string",
                         "description": "Поисковый запрос на русском языке",
-                    }
+                    },
+                    "categories": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                        },
+                        "description": (
+                            "Необязательные категории для ограничения поиска. "
+                            "Значения должны соответствовать категориям из get_knowledge_map."
+                        ),
+                    },
+                    "document_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                        },
+                        "description": (
+                            "Необязательные идентификаторы документов для ограничения поиска."
+                        ),
+                    },
                 },
                 "required": ["query"],
             },
@@ -148,63 +222,155 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "db_get_crew_manifest",
-            "description": "Получить список личного состава подразделения, их звания и обязанности по расписанию БЖ.",
+            "name": "get_knowledge_map",
+            "description": (
+                "Возвращает структуру внутренней базы знаний в виде «категория → документы». " 
+                "Вызывай, когда нужно определить релевантную категорию или документ " 
+                "для последующей фильтрации поиска. " 
+                "Возвращает только метаданные, без содержимого документов."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+{
+        "type": "function",
+        "function": {
+            "name": "get_current_time",
+            "description": (
+                "Возвращает текущие дату и время в указанном часовом поясе в формате "
+                "ISO 8601. Вызывай, когда нужно знать текущее время, например для "
+                "расчёта сроков возврата или доставки."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "role_or_department": {"type": "string", "enum": ["БЧ-5", "Дежурная служба"], "description": "Наименование боевой части или службы"}
+                    "timezone": {
+                        "type": "string",
+                        "description": "Имя часового пояса IANA, например Europe/Moscow",
+                        "default": "Europe/Moscow",
+                    }
                 },
-                "required": ["role_or_department"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "db_get_compartment_status",
-            "description": "Получить технические характеристики отсека: границы по шпангоутам, смежные помещения, системы пожаротушения и водоотлива.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "compartment_name": {"type": "string", "enum": ["Кормовое машинное отделение", "Румпельное отделение"], "description": "Название аварийного или смежного отсека"}
-                },
-                "required": ["compartment_name"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "db_get_damage_control_status",
-            "description": "Проверить состав и состояние аварийно-спасательного имущества (пластыри, упоры, огнетушители) на постах в отсеке.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "compartment": {"type": "string", "description": "Название отсека"}
-                },
-                "required": ["compartment"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "db_check_rescue_crafts",
-            "description": "Проверить техническую готовность спасательных плавсредств корабля и их ограничения по погоде.",
-            "parameters": {"type": "object", "properties": {}}
-        }
+                "required": [],
+            },
+        },
     },
 {
     "type": "function",
     "function": {
-        "name": "db_get_weather_and_sea",
-        "description": "Получить текущую гидрометеорологическую сводку с навигационных датчиков корабля: волнение моря, ветер, температура воды и воздуха.",
+        "name": "query_rewriter",
+        "description": (
+            "Превращает разговорный, сумбурный или ошибочный поисковый запрос "
+            "пользователя в профессиональную техническую фразу. Используй этот инструмент "
+            "для оптимизации текста перед отправкой в векторную базу знаний multilingual-e5-base."
+        ),
         "parameters": {
             "type": "object",
-            "properties": {}, # Параметры не требуются, функция снимает текущие показания датчиков
-            "additionalProperties": False
+            "properties": {
+                "sub_query": {
+                    "type": "string",
+                    "description": "Атомарный запрос (возможно, разговорный), требующий оптимизации."
+                }
+            },
+            "required": ["sub_query"]
         }
     }
-}
+},
+    {
+        "type": "function",
+        "function": {
+            "name": "send_telegram_message",
+            "description": (
+                "Отправляет текстовое сообщение клиенту в Telegram по идентификатору "
+                "чата. Вызывай только для финального ответа клиенту и только после "
+                "того, как все нужные данные уже собраны."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chat_id": {
+                        "type": "string",
+                        "description": "Идентификатор чата клиента в Telegram",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Текст сообщения для клиента",
+                    },
+                },
+                "required": ["chat_id", "text"],
+            },
+        },
+    },
+{
+    "type": "function",
+    "function": {
+        "name": "query_decomposition",
+        "description": (
+            "Разбивает сложный, длинный или многосоставной запрос пользователя на "
+            "несколько простых, независимых атомарных подзапросов. Вызывай этот инструмент "
+            "в самом начале, если пользователь задает комплексный вопрос, требующий проверки "
+            "нескольких разных тем или документов в базе знаний."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_query": {
+                    "type": "string",
+                    "description": "Исходный сложный или многосоставной запрос пользователя, который нужно декомпозировать."
+                }
+            },
+            "required": ["user_query"]
+        }
+    }
+},
+{
+        "type": "function",
+        "function": {
+            "name": "get_current_time",
+            "description": (
+                "Возвращает текущие дату и время в указанном часовом поясе в формате "
+                "ISO 8601. Вызывай, когда нужно знать текущее время, например для "
+                "расчёта сроков возврата или доставки."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timezone": {
+                        "type": "string",
+                        "description": "Имя часового пояса IANA, например Europe/Moscow",
+                        "default": "Europe/Moscow",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_telegram_message",
+            "description": (
+                "Отправляет текстовое сообщение клиенту в Telegram по идентификатору "
+                "чата. Вызывай только для финального ответа клиенту и только после "
+                "того, как все нужные данные уже собраны."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chat_id": {
+                        "type": "string",
+                        "description": "Идентификатор чата клиента в Telegram",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Текст сообщения для клиента",
+                    },
+                },
+                "required": ["chat_id", "text"],
+            },
+        },
+    },
 ]

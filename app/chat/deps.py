@@ -1,15 +1,18 @@
-from app.core.config import get_settings
-
 from collections.abc import AsyncIterator
 from fastapi import Depends, Request
 
 from app.chat.service import ChatService
-
+from app.core.config import get_settings
 from app.chat.repository import ChatRepository
 from app.chat.repositories.json_repo import JsonChatRepository
 from app.chat.repositories.pg_repo import PostgresChatRepository
 from app.deps.providers import LLMDep,SettingsDep,SessionFactoryDep,RAGServiceDep
 from typing import Annotated,Any
+from app.chat.repositories.pg_repo import PostgresChatRepository, PostgresSystemPromptRepository
+from app.deps.providers import LLMDep,SettingsDep,SessionFactoryDep
+from typing import Annotated
+from app.moderation.service import ModerationService
+
 
 async def get_repository(
       session: SessionFactoryDep
@@ -27,20 +30,36 @@ async def get_repository(
     raise ValueError(f"unknown chat_repository: {settings.chat_repository}")
 
 
-ChatRepositoryDep = Annotated[Any, Depends(get_repository)]
+ChatRepositoryDep = Annotated[ChatRepository, Depends(get_repository)]
 
 def get_chat_service(
         repo: ChatRepositoryDep,
         llm:LLMDep,
         rag:RAGServiceDep,
         settings:SettingsDep,
+        session_factory:SessionFactoryDep
 )->ChatService:
-    return ChatService(repository=repo,llm_client= llm,rag=rag)
+    moderation = ModerationService(
+    llm_client=llm,
+    use_openai_moderation=settings.moderation_use_openai,
+    session_factory=session_factory
+    )
+    prompt_repo=(
+        PostgresSystemPromptRepository(session_factory)
+        if session_factory is not None
+        else None
+    )
+    return ChatService(
+        repository=repo,
+        llm_client=llm,
+        chat_context_window=settings.chat_context_window,
+        chat_context_strategy=settings.chat_context_strategy,
+        moderation=moderation,
+        prompt_repo=prompt_repo,rag=rag
+    )
 
 ChatServiceDep = Annotated[Any, Depends(get_chat_service)]
 
 
 
-
-
-
+ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]

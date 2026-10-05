@@ -12,6 +12,8 @@ PII_PATTERNS = {
 
 
 def redact_pii(text: str) -> str:
+    if not text:
+        return text
     for name, pattern in PII_PATTERNS.items():
         text = pattern.sub(f"[{name}]", text)
     return text

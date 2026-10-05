@@ -22,8 +22,10 @@ async def post_with_retry(client:httpx.AsyncClient,url:str,**kw):
 class BackendClient:
     def __init__(
             self,
-            http: httpx.AsyncClient)->None:
+            http: httpx.AsyncClient,
+            admin_token: str ="")->None:
         self.http = http
+        self._admin_token=admin_token
 
     async def get_or_create_chat(
             self,
@@ -44,20 +46,25 @@ class BackendClient:
             content: str,
             media: bytes|None=None,
             mime: str |None=None,
-            filename:str="file.bin"
+            filename:str="file.bin",
+            owner_external_id: str |None=None,
     )->AsyncIterator[dict]:
 
         data={"content":content}
         files={"media":(filename,media,mime)} if media is not None else None
+        headers = (
+            {"X-Owner-External-Id": owner_external_id}
+            if owner_external_id
+            else {}
+        )
         r = await post_with_retry(
                 client=self.http,
                 url=f"/chats/{chat_id}/messages",
                 data=data,
                 files=files,
                 timeout=120,
-                headers={}
+                headers=headers
             )
-
         async for line in r.aiter_lines():
             if not line.startswith("data:"):
                 continue
@@ -80,4 +87,69 @@ class BackendClient:
     async def aclose(self) -> None:
         await self.http.aclose()
 
+    async def post_feedback(
+            self,
+            chat_id: UUID,
+            message_id: str,
+            owner_external_id: str,
+            value:str
+    )->None:
+        r=await self.http.post(
+            f"/chats/{chat_id}/messages/{message_id}/feedback",
+            json={"owner_external_id": owner_external_id, "value": value},
+            headers={"X-Owner-External-Id": owner_external_id},
+        )
+        r.raise_for_status()
 
+    #----------admin--------------------
+    def _admin_header(self ):
+        return {"X-Admin-Token": self._admin_token}
+
+    async def get_admin_stats(self,window_hours: int = 24)->dict:
+        r=await self.http.get(
+            "/chats/admin/stats",
+            params={"window_hours": window_hours},
+            headers=self._admin_header()
+        )
+        r.raise_for_status()
+        return r.json()
+
+    async def broadcast(self,text: str, interface = "telegram")->dict:
+        r=await self.http.post(
+            "/chats/admin/broadcast",
+            json={"text": text, "interface": interface},
+            headers=self._admin_header()
+        )
+        r.raise_for_status()
+        return r.json()
+
+    async def fetch_pending_alerts(self)->list[dict]:
+        r=await self.http.get(
+            "/chats/admin/alerts",headers=self._admin_header()
+        )
+        r.raise_for_status()
+        return r.json()
+
+    async def ack_alert(self,alert_id)->None:
+        r=await self.http.post(
+            f"/chats/admin/alerts/{alert_id}/ack",headers=self._admin_header()
+        )
+        r.raise_for_status()
+
+    async def set_handoff_status(
+            self,
+            owner_external_id: str,
+            status: str,
+            interface: str = "telegram",
+    )->dict:
+        r=await self.http.post(
+            f"/chats/admin/handoff",
+            json={
+                "owner_external_id": owner_external_id,
+                "interface": interface,
+                "status": status},
+            headers=self._admin_header()
+        )
+        r.raise_for_status()
+        return r.json()
+        

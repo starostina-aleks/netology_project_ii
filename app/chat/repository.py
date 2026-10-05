@@ -1,6 +1,6 @@
 from typing import Protocol
 from uuid import UUID
-from app.chat.domain import ChatMessage, Chat
+from app.chat.domain import ChatMessage, Chat, SystemPrompt
 
 class ChatRepository(Protocol):
     async def create_chat(
@@ -14,6 +14,7 @@ class ChatRepository(Protocol):
 
     async def get_or_create_chat(
             self,owner_external_id: str, interface: str,
+            system_prompt: str | None = None,
                      ) -> Chat: ...
 
     async def append_message (
@@ -24,3 +25,8 @@ class ChatRepository(Protocol):
             self,chat_id:UUID,limit:int=50) -> list[ChatMessage]:...
 
     async def soft_delete_messages(self,chat_id:UUID,)->None: ...
+
+
+class SystemPromptRepository(Protocol):
+    async def list_active(self) -> list[SystemPrompt]:
+        ...

@@ -13,3 +13,9 @@ var/
 .pytest_cache/
 .ruff_cache/
 app/models/
+data_rag/
+hf_models/
+data_5_2/
+data_5_5/
+
+

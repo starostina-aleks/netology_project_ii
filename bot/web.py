@@ -12,7 +12,7 @@ def build_api(bot: Bot,internal_token:str)->FastAPI:
     async def notify(req: NotifyRequest,
                      x_internal_token=Header(...))->dict:
         if x_internal_token!=internal_token:
-            raise HTTPException(status_code=401)
+            raise HTTPException(status_code=401,detail="invalid token")
         await bot.send_message(chat_id=req.chat_id,text=req.text)
         return {"ok":True}
     return api

@@ -112,7 +112,6 @@ def reflect(messages: list[dict],usage_total:RunUsage) -> CriticDecision:
         {"role": "system", "content": critic_system_prompt},
         *messages  # Передаем всю текущую историю (включая только что добавленный tool_message)
     ]
-
     try:
         # Используем beta.chat.completions.parse для валидации схемы
         critic_response = client.beta.chat.completions.parse(
@@ -124,17 +123,13 @@ def reflect(messages: list[dict],usage_total:RunUsage) -> CriticDecision:
         usage_total.add(critic_response.usage)
         critic_decision = critic_response.choices[0].message.parsed
     except Exception as e:
-
         logger.warning(f"react.critic_failed_or_invalid: {e}", exc_info=True)
         # В случае редкой сетевой ошибки или таймаута критика — не роняем агентский цикл
         return CriticDecision(
             status = "OK",
             reason ="Сбой критика, продолжаем",
         )
-
     return critic_decision
-
-
 
 async def run_agent(
         task: str,
@@ -153,8 +148,7 @@ async def run_agent(
         "Как только данных достаточно — дать финальный ответ без вызова инструментов. "
         "Не выдумывать данные: использовать только то, что вернули инструменты; "
         "если доступными инструментами задачу решить нельзя — прямо сообщить об этом."
-        "Алгоритм шага: 1. Напиши мысль (что делаем). 2. Вызови ОДИН инструмент. "
-        "3. Дождись ответа (Observation). Повторяй цикл, пока не решишь задачу."
+
     )
     messages = [
         {"role": "system", "content": system_prompt},
@@ -171,10 +165,7 @@ async def run_agent(
             messages=messages,
             max_tokens=1024,
             tools=TOOLS,
-            tool_choice= {
-                "type": "function",
-                "function": {"name": "search_knowledge_base"}
-            } if step == 0 else "auto",
+            tool_choice= "auto",
             parallel_tool_calls = False
         )
         message = response.choices[0].message
@@ -193,7 +184,7 @@ async def run_agent(
             )
             logger.info("step = %d финальный ответ", step)
             return {"answer": message.content,"usage": usage_total, "steps": step +1,"trace": trace}
-        print("TOOL_CALLS=",len(message.tool_calls))
+
         for call in message.tool_calls:
             name = call.function.name
             raw_args = call.function.arguments
@@ -203,9 +194,10 @@ async def run_agent(
                     step, name, raw_args, result, usage.prompt_tokens,usage.completion_tokens, duration_ms
                 )
             )
-
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result })
+            logger.info(">>> [ВЫЗОВ TOOL]: Имя=%s | Аргументы=%s", name, raw_args)
             logger.info("step=%d инструмент = %s -> %s", step, name, result[:300])
+
         result_reflect = reflect(messages, usage_total=usage_total)
         print("RESULT_REFLECT=", result_reflect.status)
         if result_reflect.status == "REVISE" and revisions_used < max_revisions:
@@ -217,7 +209,6 @@ async def run_agent(
                 "role": "system",
                 "content": f"Внимание, шаг заблокирован критиком! Причина: {result_reflect.reason}. Исправь свои действия на этом шаге."
             })
-
         if time.monotonic() - t0 > timeout_per_iteration_sec:
             return {"answer": "Timeout", "usage": usage_total, "steps": step +1,"trace": trace}
     logger.warning("исчерпан лимит шагов max_iterations=%d", max_iterations)

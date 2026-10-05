@@ -6,12 +6,13 @@ from tqdm.asyncio import tqdm
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, VectorParams,PointStruct
 from app.core.config import get_settings
-from data.generate_sample import prepare_chunks
+from scripts.generate_sample import split_text
 from sentence_transformers import SentenceTransformer
 from app.services.embeddings import EmbeddingsClient
 from app.services.vector_store import VectorStore
 from datetime import datetime, timezone
 from itertools import islice
+from pathlib import Path
 
 import logging
 
@@ -54,14 +55,15 @@ async def main():
             total,
         )
 
-        chunks = prepare_chunks()
-        logger.info("Загружаю %d документов", len(chunks))
-        contents = [chunk.page_content for chunk in chunks]
+        docs = split_text(folder=Path("data_5_2"))
+        logger.info("Загружаю %d документов", len(docs))
+        contents = [doc["text"] for doc in docs]
         logger.info("Генерация эмбеддингов...")
         vectors = await embedding.embed_documents(contents)
-        if len(vectors) != len(chunks):
+
+        if len(vectors) != len(docs):
             raise RuntimeError(
-                f"Получено {len(vectors)} embeddings на {len(chunks)} документов"
+                f"Получено {len(vectors)} embeddings на {len(docs)} документов"
             )
 
         if vectors and len(vectors[0]) != settings.embedding_dim:
@@ -69,18 +71,20 @@ async def main():
                 f"Embedding dim={len(vectors[0])} != EMBEDDING_DIM={settings.embedding_dim}. "
                 f"Сверьте имя модели и значение EMBEDDING_DIM в .env."
             )
+
         points = []
-        for i, doc in enumerate(chunks):
-            unique_string = f"{doc.metadata['source']}_{i}"
+        for i, doc in enumerate(docs):
+            unique_string = f"{doc['id']}"
             point = PointStruct(
                 id=uuid.uuid5(NAMESPACE, unique_string).hex,
                 vector=vectors[i],
                 payload={
-                    "created_at": doc.metadata["created_at"],  # Передаем строку '2026-07-17T16:20:00...'
-                    "source": doc.metadata["source"],
-                    "category": doc.metadata["category"],
-                    "hierarchy": doc.metadata["hierarchy"],
-                    "text": doc.page_content,
+                    "created_at": doc["created_at"],  # Передаем строку '2026-07-17T16:20:00...'
+                    "source": doc["source"],
+                    "hierarchy": doc["hierarchy"],
+                    "tenant_id": doc["tenant_id"],
+                    "category": doc["category"],
+                    "text": doc["text"],
                 }
             )
             points.append(point)

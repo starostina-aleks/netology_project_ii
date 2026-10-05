@@ -4,6 +4,7 @@ import pytest
 
 from tests.chat.conftest import repository
 from app.chat.domain import ChatMessage
+import time
 
 
 pytestmark = pytest.mark.asyncio
@@ -35,19 +36,20 @@ async def test_append_mess(repository):
         role="system",
     )
     await repository.append_message(chat_id=chat.id, message=mess)
+
     mess=ChatMessage(
          content="query test",
          chat_id=chat.id,
          role="user",
     )
-
+    time.sleep(1)
     await repository.append_message(chat_id=chat.id, message=mess)
     mess = ChatMessage(
         content="ans test",
         chat_id=chat.id,
         role="assistant",
     )
-
+    time.sleep(1)
     await repository.append_message(chat_id=chat.id, message=mess)
     messages=await repository.list_messages(chat.id)
     assert len(messages) == 3
@@ -95,6 +97,8 @@ async def test_list_messages(repository):
             role="user",
         )
         await repository.append_message(chat_id=chat.id, message=mess)
+        time.sleep(1)
+
     messages=await repository.list_messages(chat.id,limit=5)
     print(messages)
     assert messages[0].content == "5"

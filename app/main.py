@@ -1,4 +1,3 @@
-
 import logging
 import time
 import uuid
@@ -10,7 +9,6 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from openai import AsyncOpenAI
 from structlog.contextvars import bind_contextvars, clear_contextvars
-
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import structlog
 import secrets
@@ -25,21 +23,16 @@ from app.services.vector_store import VectorStore
 
 import asyncio
 
-from app.routers import chat, health, models
+from app.admin.routes import router as admin_router
 from app.chat.routes import router as chats_router
-from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
+
 #from app.observability.tracing import setup_tracing
 from app.observability.rag_with_tracing import setup_tracing
-
-from app.observability.logging import setup_logging
-from app.core.config import get_settings
 
 try:
     from redis.asyncio import Redis
 except ImportError:
     Redis = None  # type: ignore
-
-
 
 #logger = logging.getLogger("llm-service")
 #logging.basicConfig(level=logging.INFO)
@@ -169,6 +162,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     expose_headers=["X-Request-ID", "X-LLM-Cost-USD"],
 )
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     redis = request.app.state.redis
@@ -250,6 +244,7 @@ _STATUS_MAP: list[tuple[type[LLMError], int, str]] = [
     (LLMError, 502, "llm_error"),
 ]
 
+
 @app.exception_handler(LLMError)
 async def handle_llm_error(request: Request, exc: LLMError):
     for cls, status, code in _STATUS_MAP:
@@ -276,12 +271,11 @@ async def handle_validation(request: Request, exc: RequestValidationError):
         headers={"X-Request-ID": getattr(request.state, "request_id", "")},
     )
 
+
 app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(models.router)
 app.include_router(rag.router)
 app.include_router(documents.router)
 app.include_router(chats_router)
-
-
-
+app.include_router(admin_router)

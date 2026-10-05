@@ -4,6 +4,7 @@ import httpx
 import requests
 from app.services.rag import RAGService
 from app.core.config import get_settings
+
 # Заглушка базы знаний. В дипломном проекте здесь будет вызов
 # app/services/rag.py (поиск top-1 фрагмента по реальной коллекции).
 _KNOWLEDGE_BASE: dict[str, str] = {
@@ -13,26 +14,27 @@ _KNOWLEDGE_BASE: dict[str, str] = {
     "оплата": "Доступна оплата картой, по СБП и наличными при получении.",
 }
 
-#rag = RAGService(get_settings())
-#print('service_build...')
-#rag.build()
+rag = RAGService(get_settings())
+print('service_build...')
+rag.build()
 # Базовый URL вашего развернутого микросервиса базы знаний
-KNOWLEDGE_BASE_URL = "http://localhost:8000"
+#KNOWLEDGE_BASE_URL = "http://localhost:8000"
 
-async def search_knowledge_base1(query: str) -> str:
+
+async def search_knowledge_base(query: str,
+                                categories:list[str]=None,
+                                document_ids:list[int]=None) -> str:
     """Поиск ответа во внутренней базе знаний по ключевому слову запроса."""
     """
     normalized = query.lower()
-    
+
     for key, value in _KNOWLEDGE_BASE.items():
         if key in normalized:
             return value
     return "По запросу ничего не найдено."
     """
-    #text= await rag.retrieve(query,1)
-    #return text
-
-
+    node= await rag.retrieve(query,1)
+    return node[0].text
 
 
 async def post_with_retry(client: httpx.AsyncClient, url: str, **kw):
@@ -40,34 +42,6 @@ async def post_with_retry(client: httpx.AsyncClient, url: str, **kw):
     r.raise_for_status()
     return r
 
-
-async def search_knowledge_base(query: str) -> str:
-    """
-    Поиск ответа во внутренней базе знаний по нормативным документам через API-эндпоинт.
-    """
-    # Настраиваем тайм-аут на 30 секунд, чтобы реранкер успел обработать запрос
-    timeout = httpx.Timeout(30.0, connect=5.0)
-
-    async with (httpx.AsyncClient(base_url=KNOWLEDGE_BASE_URL,timeout=timeout) as client):
-        try:
-            # Передаем запрос в формате JSON, как ожидает FastAPI эндпоинт
-            response = await post_with_retry(
-                client,
-                url="rag/query",
-                json={"question": query}
-            )
-            # Парсим JSON и забираем строку с текстом из "data"
-            result_json = response.json()
-            return result_json
-            #.get("data", "Данные в ответе отсутствуют.")
-
-        except httpx.HTTPStatusError as e:
-            # Обработка ошибок сервера (например, 500 Internal Server Error)
-            return f"Ошибка базы знаний: Сервер вернул код {e.response.status_code}."
-
-        except httpx.RequestError as e:
-            # Обработка сетевых ошибок (например, сервер выключен или упал по таймауту)
-            return f"Ошибка сети при обращении к базе знаний: {str(e)}."
 
 
 def get_current_time(timezone: str = "Europe/Moscow") -> str:
@@ -78,9 +52,9 @@ def get_current_time(timezone: str = "Europe/Moscow") -> str:
 
 def send_telegram_message(chat_id: str, text: str) -> str:
     """Отправка сообщения клиенту в Telegram (в этом задании — заглушка)."""
-    info=f"[TELEGRAM → {chat_id}] {text}"
-    #print(info)
-    return info#f"Сообщение отправлено в {chat_id}"
+    info = f"[TELEGRAM → {chat_id}] {text}"
+    # print(info)
+    return info  # f"Сообщение отправлено в {chat_id}"
 
 
 # Allowlist: имя инструмента -> реализация. Никаких eval/getattr —
@@ -99,9 +73,13 @@ TOOLS = [
         "function": {
             "name": "search_knowledge_base",
             "description": (
-                "Ищет ответ во внутренней базе знаний по уставам и регламентам ВМФ и Вооруженных Сил РФ, "
-                "правилам судоходства, финансам, кадрам и социальному обеспечению военных организаций."
-                "Вызывай, когда нужны справочные данные, содержащиеся в нормативных документах."
+                "Ищет ответ во внутренней базе знаний по документам, по следующим категориям:"
+                "Международные правовые документы\Морские;"
+                "Международные правовые документы\Общие;"
+                "Нормативные документы\Общие уставные документы\Морские уставы;"
+                "Нормативные документы\Общие уставные документы\Общевоинские уставы;"
+                "Нормативные документы\Приказы и указания МО РФ."
+                "Вызывай, когда нужны справочные данные, содержащиеся в нормативных и правовых документах."
             ),
             "parameters": {
                 "type": "object",

@@ -3,6 +3,7 @@ from langchain_text_splitters import  RecursiveCharacterTextSplitter,MarkdownHea
 from langchain_core.documents import Document
 from datetime import datetime, timezone, timedelta
 import json
+
 # Функция подсчета токенов для модели эмбеддингов
 def num_tokens_from_string(string: str, encoding_name: str) -> int:
     """Returns the number of tokens in a text string."""

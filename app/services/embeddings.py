@@ -18,6 +18,7 @@ class EmbeddingsClient:
         self._model = model
         self._model_name = model[0].auto_model.config._name_or_path
         self._embedding_dim = model.get_embedding_dimension()
+        print("self._embedding_dim=",self._embedding_dim)
         self._batch_size = batch_size
 
         # Инициализация директории кеша
@@ -79,18 +80,16 @@ async def _smoke(client) -> None:
     start_time = time.perf_counter()
     for item in data:
         q, rel, irrel = item["query"], item["relevant"], item["irrelevant"]
-
         # С префиксами
         s_rel_p = sim(await client.embed_cached(q,"query"), await client.embed_cached(rel, "passage"))
         s_irr_p = sim(await client.embed_cached(q,"query"), await client.embed_cached(irrel, "passage"))
         gaps_pre.append(s_rel_p - s_irr_p)
-
         # Без префиксов
         s_rel_n = sim(await client.embed_cached(q), await client.embed_cached(rel))
         s_irr_n = sim(await client.embed_cached(q), await client.embed_cached(irrel))
         gaps_none.append(s_rel_n - s_irr_n)
     end_time = time.perf_counter()
-    print(np.mean(gaps_pre) - np.mean(gaps_none))
+    print("difference:", np.mean(gaps_pre) - np.mean(gaps_none))
     return end_time - start_time
 
 
@@ -99,7 +98,6 @@ async def main():
     model_path = settings.embedding_model
     model = SentenceTransformer(model_path)
     client = EmbeddingsClient(model)
-    print(model.get_embedding_dimension())
 
     execution_time_1 = await _smoke(client)
     print(f"Время выполнения бенчмарка 1 (Холодный): {execution_time_1:.3f} сек.")
@@ -112,7 +110,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 
 
-#0.0037056795146331867
+#difference: 0.0037056795146331867
 #Время выполнения бенчмарка 1 (Холодный): 2.715 сек.
-#0.0037056795146331867
+#difference: 0.0037056795146331867
 #Время выполнения бенчмарка 2 (Горячий): 0.023 сек.

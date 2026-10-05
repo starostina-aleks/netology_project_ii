@@ -21,6 +21,10 @@ def get_cache(request: Request)->Any:
 
 CacheDep = Annotated[object, Depends(get_cache)]
 
+def get_session_factory(request: Request)->Any:
+    return request.app.state.session_factory
+SessionFactoryDep = Annotated[Any, Depends(get_session_factory)]
+
 def get_canary(request: Request) -> str:
     return request.app.state.canary
 canaryDep= Annotated[str, Depends(get_canary)]
@@ -32,6 +36,7 @@ def get_llm_service(
     canary: canaryDep,
 ) -> LLMService:
     return LLMService(llm=llm, cache=cache,canary=canary, ttl=settings.cache_ttl_seconds)
+
 
 LLMServiceDep = Annotated[LLMService, Depends(get_llm_service)]
 

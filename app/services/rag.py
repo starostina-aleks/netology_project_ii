@@ -226,7 +226,6 @@ class RAGService:
 
     async def _synthesize(self,query:str,nodes:list[NodeWithScore])->dict:
         top_score=max((sn.score or 0.0 for sn in nodes),default=0.0)
-        print("NODES=",nodes)
         if not nodes or top_score < self._settings.rag_score_threshold:
             return {
                 "answer": REFUSAL_TEXT,
@@ -258,7 +257,7 @@ class RAGService:
             "answer": parse_citations(str(response),sources),
             "top_score": round(top_score, 3),
             "sources": sources,
-            "confident": False,
+            "confident": True,
             "generation_latency_sec": end_generation - start_generation
         }
 
@@ -282,17 +281,24 @@ class RAGService:
         )
         return scroll_results
 
-    async def retrieve(self,query:str,top_k:int=None):
-        """
-        if self._index is None:
-            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
-        ret_top_k = top_k if top_k is not None else self._settings.rag_top_k
-        retriever = self._index.as_retriever(
-            similarity_top_k=ret_top_k)
-        return retriever.retrieve(query)
-        """
-        nodes = await self._retrieve(query)
-        return nodes[:top_k]
+    async def retrieve(self,query:str,top_k:int=None, filters = None):
+
+        #nodes = await self._retrieve(query)
+        #return nodes[:top_k]
+
+        loc_retriever = self._retriever
+        if filters is not None:
+            loc_retriever = self._index.as_retriever(
+            similarity_top_k=self._settings.rag_retrieved_top_k,
+            sparse_top_k=self._settings.rag_retrieved_top_k,
+            enable_hybrid=True,
+            vector_store_query_mode="hybrid",
+            filters=filters,
+        )
+        nodes = await loc_retriever.aretrieve(query)
+        for postprocessor in self._postprocessor:
+            nodes = postprocessor.postprocess_nodes(nodes, query_str=query)
+        return _numbered_context(nodes)
 
     def get_prev_text(self,prev_node_id):
         qdrant_client = self._index.vector_store.client

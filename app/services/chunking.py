@@ -33,16 +33,12 @@ async def main():
         chunk_overlap=settings.rag_chunk_overlap,
         separator='\n\n',
     )
-
-
-
     model_path = settings.embedding_model
     embed_model = HuggingFaceEmbedding(
             model_name=model_path,
             device="cpu",
             embed_batch_size=8,
         )
-
     splitter=SemanticSplitterNodeParser(
         buffer_size=1,
         breakpoint_percentile_threshold=95,

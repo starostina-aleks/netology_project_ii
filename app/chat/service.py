@@ -1,27 +1,33 @@
 from uuid import UUID
 import logging
 from app.chat.domain import Chat,ChatMessage
-from app.chat.repository import ChatRepository
+from app.chat.repository import ChatRepository,SystemPromptRepository
 from app.services.llm import LLMService
 from collections.abc import AsyncIterator
 from app.prompts.loader import render_system_prompt
 from app.schemas.chat import ChatRequest, Message, ChatDelta
 import tiktoken
 from fastapi import UploadFile
+from app.chat.media import media_to_part, settings
+from app.moderation.domain import ModerationResult
+from app.moderation.service import ModerationService
+from app.chat.prompt_selection import choose_by_split
 from app.chat.media import media_to_part
 from app.core.config import get_settings
 from app.deps.providers import RAGServiceDep,SessionFactoryDep
 from app.admin.repository import AdminRepository
 
 
+import structlog
+logger = structlog.get_logger("llm-service.chat")
 
-logger = logging.getLogger("llm-service.chat")
-settings=get_settings()
+#logger = logging.getLogger("llm-service.chat")
 
 SUMMARIZE_PROMPT = (
         "Сожми этот диалог в 2-3 предложения. Сохрани: "
         "ключевые темы, имена, числа, принятые решения, нерешённые вопросы. "
         "Стиль - телеграфный."
+        "<dialogue>"
     )
 
 enc = tiktoken.get_encoding("o200k_base")  # GPT-4o / GPT-5
@@ -42,8 +48,8 @@ def count_tokens(messages) -> int:
    
     return total + 2
 
-CONTEXT_WINDOW = 8_000  # практичный лимит, не 1М
-RESPONSE_TOKENS = 1_024
+CONTEXT_WINDOW = 8000  # практичный лимит, не 1М
+RESPONSE_TOKENS = 1024
 SAFETY_MARGIN = 256
 KEEP_RECENT=5
 
@@ -72,6 +78,8 @@ class ChatService:
     def __init__(self,
                  repository: ChatRepository,
                  llm_client,
+                 moderation: ModerationService|None=None,
+                 prompt_repo: SystemPromptRepository|None=None,
                  rag:RAGServiceDep|None=None,
                  chat_context_strategy:str=settings.chat_context_strategy,
                  default_model:str=settings.llm.default_model,
@@ -79,9 +87,11 @@ class ChatService:
                  use_condense:bool=True):
         self.repository = repository
         self.llm_client = llm_client
-        self.system_prompt = "Ты полезный ассистент."#render_system_prompt(product_name="Acme Cloud")
+        #self.system_prompt = "Ты полезный ассистент."#render_system_prompt(product_name="Acme Cloud")
         self.context_window = chat_context_window
         self.chat_context_strategy = chat_context_strategy
+        self.moderation = moderation
+        self.prompt_repo = prompt_repo
         self.rag=rag
         self.use_condense=use_condense
         self.default_model = default_model
@@ -99,9 +109,10 @@ class ChatService:
             self,
             owner_external_id:str,
             interface:str,
+            system_prompt: str | None = None,
     )->Chat:
         return await self.repository.get_or_create_chat(
-            owner_external_id,interface)
+            owner_external_id,interface,system_prompt)
 
     async def get_chat(
             self,
@@ -109,49 +120,80 @@ class ChatService:
     )->Chat:
         return await self.repository.get_chat(chat_id)
 
+    async def get_messages(self, chat_id,limit:int=50) -> list[ChatMessage]:
+        return await self.repository.list_messages(
+            chat_id=chat_id, limit=limit)
+
+    async def clear_history(self,
+            chat_id:UUID,
+    )->None:
+        await self.repository.soft_delete_messages(chat_id=chat_id)
+
+    async def check_input(
+            self, content:str,owner_external_id:str|None=None,
+    )->ModerationResult:
+        if self.moderation is None:
+            return ModerationResult(allowed=True, layer="passed")
+        return await self.moderation.check_input(
+            content,owner_external_id
+        )
 
     async def summarize(self,messages: list[Message]) -> str:
-        convo = "\n".join(f"{m.role}: {m.content}" for m in messages)
+        #convo = "\n".join(f"{m.role}: {m.content}" for m in messages)
+        convo = "\n\n".join(f"[{m.role.upper()}]\n{m.content}" for m in messages if m.content)
+
         resp = await self.llm_client.chat.completions.create(
                 model=settings.llm.default_model,
                 messages=[{"role":"system", "content":SUMMARIZE_PROMPT},
-                {"role":"user", "content":convo}
+                {"role":"user", "content":f"{convo}\n</dialogue>"}
                       ],
-            max_tokens=256
+            max_tokens=512,
+            reasoning_effort="none",
         )
         content=resp.choices[0].message.content
         if content is None:
             return ""
         return content.strip()
 
-    async def get_messages(self, chat_id,limit:int=50) -> list[ChatMessage]:
-        return await self.repository.list_messages(
-            chat_id=chat_id, limit=limit)
+    def build_messages(self,history: list[ChatMessage],system_prompt) -> list[dict]:
 
-    def build_messages(self,history: list[ChatMessage]) -> list[dict]:
-        messages: list[dict] = [{"role": "system", "content": self.system_prompt}]
+        messages: list[dict] = []
+        if system_prompt is not None:
+            messages.append({ "role": "system", "content": system_prompt, })
         for m in history:
             messages.append(_message_content_for_llm(m))
         return fit_to_budget(messages)
 
-    async def build_messages_sliding_window(self,chat_id) -> list[dict]:
+    async def build_messages_sliding_window(self,chat_id, system_prompt:str) -> list[dict]:
         history = await self.repository.list_messages(chat_id=chat_id, limit=self.context_window)
-        return self.build_messages(history)
 
-    async def build_messages_hybrid(self,chat_id) -> list[dict]:
+        return self.build_messages(history,system_prompt)
+
+    async def build_messages_hybrid(self,chat_id,system_prompt:str) -> list[dict]:
         history = await self.repository.list_messages(chat_id=chat_id, limit=200)
         if len(history)<=KEEP_RECENT:
-            return self.build_messages(history)
+            return self.build_messages(history,system_prompt)
 
         old, recent = history[:-KEEP_RECENT], history[-KEEP_RECENT:]
         old_as_msgs = [Message(role=m.role,content=m.content) for m in old]
         summary = await self.summarize(old_as_msgs)
-
-        messages = [{"role": "system", "content": self.system_prompt},
-                    {"role": "system", "content": f"Контекст из предыдущей беседы: {summary}"}]
-        messages.extend({"role":m.role, "content":m.content} for m in recent)
+        messages: list[dict] = []
+        if system_prompt is not None:
+            messages.append({ "role": "system", "content": system_prompt, })
+        messages.append({"role": "system", "content": f"Контекст из предыдущей беседы: {summary}"})
+        for m in recent:
+            messages.append(_message_content_for_llm(m))
         return messages
-        
+
+    async def _pick_prompt(self, owner_external_id:str):
+        if self.prompt_repo is None:
+            return None, None
+        active = await self.prompt_repo.list_active()
+        chosen=choose_by_split(owner_external_id,active)
+        if chosen is None:
+            return None, None
+        return chosen.id, chosen.body
+
     async def send_message(self,
             chat_id:UUID,
             user_content:str|None,
@@ -169,18 +211,26 @@ class ChatService:
                 "filename":filename,
                 "part":part,
             }
+        chat =await self.repository.get_chat(chat_id)
+        if chat is None:
+            raise ValueError(f"Chat with id {chat_id} not found")
+
+        prompt_id, prompt_body = await self._pick_prompt(chat.owner_external_id)
+        effective_prompt=prompt_body or chat.system_prompt
+
         chat_message=ChatMessage(
             chat_id=chat_id,
             role="user",
             content=user_content or "[медиа]",
             media_refs=media_refs,
+            prompt_id=prompt_id,
         )
         await self.repository.append_message(chat_id=chat_id,message=chat_message)
 
         if self.chat_context_strategy=="sliding":
-            messages = await self.build_messages_sliding_window(chat_id)
+            messages = await self.build_messages_sliding_window(chat_id,effective_prompt)
         else:
-            messages = await self.build_messages_hybrid(chat_id)
+            messages = await self.build_messages_hybrid(chat_id,effective_prompt)
         sources:list[dict]=[]
         if self.rag is not None:
             rag_context=await self.rag.generate_rag_context(
@@ -188,6 +238,7 @@ class ChatService:
                 history=messages[:-1],
                 use_condense=self.use_condense
             )
+            #print("RAG_CONTEXT",rag_context)
 
             if not rag_context.get("confident"):
                 yield {"type":"token","delta":rag_context.get("text")}
@@ -204,6 +255,7 @@ class ChatService:
                 return
             messages=messages[:-1]
             sources=rag_context.get("sources")
+            print("RAG_CONTEXT",rag_context.get("text"))
             messages.append(
                 {
                     "role": "system",
@@ -211,13 +263,15 @@ class ChatService:
                 },
             )
         buffer = ""
+        print("MESSAGES",messages)
         stream=  await self.llm_client.chat.completions.create(
             model=settings.llm.default_model,
             messages=messages,
             stream=True,
             stream_options={"include_usage":True},
-            max_tokens=4000,
+            max_tokens=2000,
         )
+        buffer=""
         try:
             async for chunk in stream:
                 if not getattr(chunk,"choices",None):
@@ -240,7 +294,8 @@ class ChatService:
                     ChatMessage(
                         chat_id=chat_id,
                         role="assistant",
-                        content=buffer
+                        content=buffer,
+                        prompt_id=prompt_id,
                     ),
                 )
                 yield {
@@ -257,6 +312,7 @@ class ChatService:
                     chat_id=chat_id,
                     role="assistant",
                     content=buffer,
+                    prompt_id=prompt_id,
                     sources=sources
                 ),
             )
@@ -267,8 +323,4 @@ class ChatService:
         if sources:
             yield {"type": "sources","sources":sources,"confident":True}
 
-    async def clear_history(self,
-            chat_id:UUID,
-    )->None:
-        await self.repository.soft_delete_messages(chat_id=chat_id)
 
