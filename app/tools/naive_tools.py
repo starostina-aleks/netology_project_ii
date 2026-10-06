@@ -5,6 +5,7 @@ import requests
 from app.services.rag import RAGService
 from app.core.config import get_settings
 
+
 # Заглушка базы знаний. В дипломном проекте здесь будет вызов
 # app/services/rag.py (поиск top-1 фрагмента по реальной коллекции).
 _KNOWLEDGE_BASE: dict[str, str] = {

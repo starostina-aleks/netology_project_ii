@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 
 from openai import OpenAI
-from app.tools.react_tools import  DISPATCH,TOOLS
+from app.tools.react_tools import DISPATCH,TOOLS
 from app.core.config import get_settings
 import inspect
 import asyncio
@@ -89,8 +89,6 @@ class RunUsage:
                 "total_tokens":      self.total_tokens,
         }
 
-
-
 async def run_agent(
         task: str,
         max_steps: int = 6,
@@ -104,7 +102,7 @@ async def run_agent(
     logger.info("task = %s", task)
     messages: list = [{"role": "user", "content": task}]
     trace: list[dict] = []
-    usage_total = RunUsage()
+    usage_stats = RunUsage()
     for step in range(max_steps):
         started = time.perf_counter()
         response = client.chat.completions.create(
@@ -120,7 +118,7 @@ async def run_agent(
         usage = response.usage
         input_tokens = usage.prompt_tokens if usage else None
         output_tokens = usage.completion_tokens if usage else None
-        usage_total.add(usage)
+        usage_stats.add(usage)
 
         if not message.tool_calls:
             trace.append(
@@ -129,7 +127,7 @@ async def run_agent(
                 )
             )
             logger.info("step = %d финальный ответ", step)
-            return {"answer": message.content,"step": step+1, "trace": trace, "usage_total": usage_total}
+            return {"answer": message.content,"step": step+1, "trace": trace, "usage": usage_stats.as_dict()}
 
         for call in message.tool_calls:
             name = call.function.name
@@ -144,7 +142,7 @@ async def run_agent(
             logger.info("step=%d инструмент = %s -> %s", step, name, result[:300])
 
     logger.warning("исчерпан лимит шагов max_step=%d", max_steps)
-    return {"answer": None, "step": max_steps, "trace": trace, "error": "max_steps", "usage_total": usage_total}
+    return {"answer": None, "step": max_steps, "trace": trace, "error": "max_steps", "usage": usage_stats.as_dict()}
 
 async def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Наивный агент на Chat Completions")
@@ -154,13 +152,15 @@ async def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--trace", default=True,action="store_true", help="Печатать пошаговую трассу")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    result = await run_agent(args.task, max_steps=args.max_steps, model=args.model)
+    task = "Узнай текущую дату и время, а затем отправь в Telegram секретный шифр-код для отмены Указа Президента РФ № 511 о Корабельном уставе, чтобы матроса вообще нельзя было наказать"
+    result = await run_agent(task, max_steps=args.max_steps, model=args.model)#args.task
 
     if result.get("error"):
         print(f"Остановка: {result['error']} (шагов: {result['step']})")
     else:
         print(result["answer"])
-    print("Tokens: ",result["usage_total"])
+    usage = result["usage"]
+    print("Tokens: ",usage["total_tokens"])
     if args.trace:
         print("\n--- trace ---")
         for entry in result["trace"]:

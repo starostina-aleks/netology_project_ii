@@ -1,7 +1,6 @@
 from datetime import datetime
 import json
 from zoneinfo import ZoneInfo
-
 from app.core.config import get_settings
 from  pathlib import Path
 from app.services.rag import RAGService
@@ -18,6 +17,13 @@ client = OpenAI(
         base_url=settings.llm.base_url
 )
 def get_knowledge_map():
+    """
+    Возвращает структуру внутренней базы знаний в виде «категория → документы».
+    Вызывай, когда нужно определить релевантную категорию или документ
+    для последующей фильтрации поиска.
+    Возвращает только метаданные, без содержимого документов.
+
+    """
     result = []
     input_json_path=settings.rag_data_dir/"documents.json"
     with open(input_json_path, "r", encoding="utf-8") as f:
@@ -36,12 +42,17 @@ def get_knowledge_map():
          })
     return result
 
-
 async def search_knowledge_base(
     query: str,
     categories: list[str] | None = None,
     document_ids: list[int] | None = None,
 ):
+    """
+    Ищет информацию во внутренней базе знаний по содержимому документов.
+    Вызывай, когда для ответа на запрос пользователя нужны данные из базы знаний.
+    При наличии подходящей категории или документа используй их для сужения области поиска.
+    Если релевантная категория или документ неизвестны, выполняй поиск без фильтров.
+    """
     filters = []
 
     if categories:
@@ -63,8 +74,9 @@ async def search_knowledge_base(
         )
 
     metadata_filters = MetadataFilters(filters=filters) if filters else None
-    result = await rag.retrieve(query, 1,metadata_filters)
-    return result
+    #result = await rag.retrieve(query, 1,metadata_filters)
+    result = await rag.answer(query)
+    return result.get("answer")
 
 
 class DecompositionArgs(BaseModel):
@@ -174,7 +186,6 @@ DISPATCH = {
     "send_telegram_message": send_telegram_message,
     "query_rewriter": query_rewriter,
     "query_decomposition": query_decomposition
-
 }
 
 TOOLS = [
