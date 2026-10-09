@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     # только regex-блоклист.
     moderation_use_openai: bool = True
 
+    agent_checkpointer: Literal["memory", "sqlite", "postgres"] = "sqlite"
+    # Файл SQLite-чекпоинтера при agent_checkpointer="sqlite".
+    agent_sqlite_path: str = "var/agent_checkpoints.sqlite"
+
 
 @lru_cache
 def get_settings() -> Settings:

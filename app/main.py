@@ -1,4 +1,3 @@
-import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -13,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import structlog
 import secrets
 
-from app.routers import chat, health, models,rag, documents
+from app.routers import chat, health, models,rag, documents, agent
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
 from app.observability.tracing import setup_tracing
 from app.observability.logging import setup_logging
@@ -28,6 +27,7 @@ from app.chat.routes import router as chats_router
 
 #from app.observability.tracing import setup_tracing
 from app.observability.rag_with_tracing import setup_tracing
+from contextlib import AsyncExitStack
 
 try:
     from redis.asyncio import Redis
@@ -125,7 +125,31 @@ async def lifespan(app: FastAPI):
             e,
         )
 
+    # Агентный слой (LangGraph): персистентный ReAct-граф с HIL.
+    # Чекпоинтер держит соединение всё время работы приложения — граф
+    # поднимается через AsyncExitStack и закрывается на shutdown.
+    app.state.agent_graph = None
+    agent_stack = AsyncExitStack()
+    try:
+        from app.services.agent_persistent import agent_lifespan
+        app.state.agent_graph = await agent_stack.enter_async_context(
+            agent_lifespan(
+                settings.agent_checkpointer,
+                sqlite_path=settings.agent_sqlite_path,
+                postgres_url=settings.database_url,
+            )
+        )
+        logger.info(
+            "Персистентный агент собран (backend=%s)", settings.agent_checkpointer
+        )
+    except Exception as e:
+        app.state.agent_graph = None
+        logger.warning("Агентный граф не собран (%s) — /agent/* вернут 503", e)
+
     yield
+
+    await agent_stack.aclose()
+
 
     try:
         await app.state.llm.close()
@@ -146,6 +170,8 @@ async def lifespan(app: FastAPI):
             await app.state.rag_service.close()
         except Exception:
             logger.exception("ошибка при закрытии RAG-сервиса")
+
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -279,3 +305,4 @@ app.include_router(rag.router)
 app.include_router(documents.router)
 app.include_router(chats_router)
 app.include_router(admin_router)
+app.include_router(agent.router)

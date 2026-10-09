@@ -2,8 +2,7 @@ import asyncio
 from typing import Annotated, TypedDict
 from langchain_core.messages import AnyMessage, ToolMessage, HumanMessage
 from langchain_core.tools import tool, StructuredTool
-from langgraph.constants import START, END
-from langgraph.graph import StateGraph
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from  app.core.config import get_settings
 from app.services.rag import RAGService
@@ -17,11 +16,6 @@ from app.tools.react_tools import (
     send_telegram_message
 )
 
-"""
-rag = RAGService(get_settings())
-print('service_build...')
-rag.build()
-"""
 settings = get_settings()
 
 
