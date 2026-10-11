@@ -54,12 +54,12 @@ async def post_message(
         chat_id: UUID,
         chat_service:ChatServiceDep,
         content:str=Form(""),
+        category: Annotated[str | None, Form()] = None,
         media:UploadFile|None=File(None),
         owner_external_id: Annotated[
             str|None,Header(alias="X-Owner-External-Id")
                 ]=None,
 )-> StreamingResponse:
-
     mod_result=await chat_service.check_input(
         content,owner_external_id=owner_external_id
     )
@@ -77,6 +77,7 @@ async def post_message(
             async for chunk in chat_service.send_message(
                 chat_id=chat_id,
                 user_content=content,
+                category=category,
                 media=media,
             ):
                 yield f"data: {json.dumps(chunk,ensure_ascii=False)}\n\n"

@@ -64,8 +64,15 @@ SessionFactoryDep=Annotated[Any, Depends(get_session)]
 
 def get_agent_graph(request: Request) -> Any:
     """Скомпилированный ReAct-граф агента, собранный в lifespan. None — если
-    сборка не удалась (нет ключа/модели): /agent/chat отдаёт 503."""
+    сборка не удалась (нет ключа/модели): /agents/chat отдаёт 503."""
     return request.app.state.agent_graph
 
 AgentGraphDep = Annotated[Any, Depends(get_agent_graph)]
+
+def get_supervisor(request: Request) -> Any:
+    """Мультиагентный supervisor-граф (researcher + writer), собранный в lifespan.
+    None — если сборка не удалась: /agent/research отдаёт 503."""
+    return request.app.state.supervisor
+
+SupervisorDep = Annotated[Any, Depends(get_supervisor)]
 

@@ -18,6 +18,7 @@ from app.core.config import get_settings
 from langgraph.types import interrupt, Command
 from contextlib import AsyncExitStack
 
+
 DANGEROUS_TOOL = "add_custom_synonym"
 
 class AgentState(TypedDict):
@@ -32,8 +33,16 @@ class AgentState(TypedDict):
 def build_agent(model,tools, write_action,
     checkpointer: Any
 ):
+    bound_model = model.bind_tools(tools)
     async def call_model(state: AgentState) -> dict:
-        response = await model.ainvoke(state["messages"])
+        print("MESSAGES")
+        for message in state["messages"]:
+            print(
+                type(message).__name__,
+                getattr(message, "tool_call_id", None),
+                getattr(message, "tool_calls", None),
+            )
+        response = await bound_model.ainvoke(state["messages"])
         return {
             "messages": [response],
             "iteration_count": state["iteration_count"] + 1
@@ -79,10 +88,13 @@ def build_agent(model,tools, write_action,
         count_add = state["count_add"] or 0
         decision = interrupt({"preview": draft, "type": "approve_add_synonym"})
         if decision is True:
+            print("DECISION  = TRUE")
             content = write_action(abbreviation=draft.get("abbreviation"), synonyms=draft.get("synonyms"))
+            print(f"SERVICE ANSWER  {content}")
             count_add += 1
         else:
             content = "Действие отменено пользователем"
+        print(f"TOOL_CALL_ID = {draft.get("tool_call_id", "")}")
         return {
             "is_synonym_saved": decision,
             "messages": [
@@ -137,7 +149,6 @@ async def agent_lifespan(model,tools,write_action,
     sqlite_path: str = "var/agent_checkpoints.sqlite",
     postgres_url: str = "",
 ) -> AsyncIterator[Any]:
-
     if backend == "memory":
         # InMemorySaver не требует setup() и живёт в памяти процесса.
         yield build_agent(model=model,tools=tools,write_action=write_action,checkpointer=InMemorySaver())
@@ -158,19 +169,24 @@ async def main():
     agent_stack = AsyncExitStack()
     try:
         from app.tools.graph_tools import tools
-
+        from app.agents.tools import build_search_knowledge_base
+        from app.services.rag import RAGService
         settings = get_settings()
+        rag = RAGService(settings)
+        rag.build()
         service = SynonymService()
+        search_knowledge_base=build_search_knowledge_base(rag.answer)
+        full_tools = [*tools, search_knowledge_base]
         model = ChatOpenAI(
             model=settings.llm.default_model,  # например, "gpt-4o"
             openai_api_key=settings.llm.openai_api_key,  # ваш API-ключ
             openai_api_base=settings.llm.base_url,  # базовый URL (если используете прокси/vllm)
             max_tokens=1024,
             temperature=0.0
-        ).bind_tools(tools)
+        )
         write_action = service.add_synonym
         custom_graph = await agent_stack.enter_async_context(
-            agent_lifespan(model=model,tools=tools, write_action=write_action,
+            agent_lifespan(model=model,tools=full_tools, write_action=write_action,
                 backend=settings.agent_checkpointer,
                 sqlite_path=settings.agent_sqlite_path,
                 postgres_url=settings.database_url,
@@ -211,7 +227,7 @@ async def main():
 
 
     except Exception as e:
-        print("Агентный граф не собран (%s)", e)
+        print(f"Агентный граф не собран ({e})")
 
 
     """

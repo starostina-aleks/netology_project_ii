@@ -75,10 +75,10 @@ async def main() -> None:
             openai_api_base=settings.llm.base_url,  # базовый URL (если используете прокси/vllm)
             max_tokens=1024,
             temperature=0.0
-        ).bind_tools(tools)
+        )
         service = SynonymService()
         write_action = service.add_synonym
-        graph = build_agent(model=model.bind_tools(tools),
+        graph = build_agent(model=model,
                             tools=tools,
                             write_action=write_action,
                             checkpointer=saver, )

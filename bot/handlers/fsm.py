@@ -10,24 +10,33 @@ from bot.services.backend_client import BackendClient
 from bot.services.error_handling import handle_backend_error
 from bot.services.typing import typing_until
 from bot.services.streaming import stream_to_bot
+from bot.handlers.document_categories import get_top_level_categories
 
 router=Router()
 
 @router.message(Command('ask'))
 async def start_ask(message:Message,state:FSMContext)->None:
-    await  message.answer("Выберите тему:",reply_markup=topic_kb())
+    await  message.answer("Выберите категорию:",reply_markup=topic_kb())
     await state.set_state(AskFlow.waiting_for_topic)
 
 @router.callback_query(AskFlow.waiting_for_topic,F.data.startswith("topic:"))
 async def on_topic(callback:CallbackQuery,state:FSMContext):
-    slug=callback.data.split(":",1)[1]
-    if slug == "cancel":
+    value=callback.data.split(":",1)[1]
+    if value == "cancel":
         await state.clear()
         await callback.message.edit_text("Сценарий отменен")
     else:
-        await state.update_data(topic=slug)
+        if value == "all":
+            await state.update_data(topic=None)
+            text=f"Задайте вопрос:"
+        else:
+            categories = get_top_level_categories()
+            category = categories[int(value)]
+            await state.update_data(topic=category)
+            text=f"Категория: {category}. Задайте вопрос:"
+
         await state.set_state(AskFlow.waiting_for_question)
-        await callback.message.edit_text(f"Тема: {slug}. Введите вопрос:")
+        await callback.message.edit_text(text)
     await callback.answer()
 
 @router.message(AskFlow.waiting_for_question,F.text)
@@ -36,16 +45,15 @@ async def on_question(
         state:FSMContext,
         backend:BackendClient,
 )->None:
-    sent_message = await message.answer("Думаю...")
-    data=await  state.get_data()
+    data=await state.get_data()
     topic=data["topic"]
     question=message.text
     prompt=f"Тема:{topic}. Вопрос: {question}"
+
     chat_id=await backend.get_or_create_chat(
         owner_external_id=str(message.chat.id),
         interface="telegram"
     )
-
     stop = asyncio.Event()
     typing_task = asyncio.create_task(
         typing_until(message.bot, message.chat.id, stop))
@@ -54,6 +62,7 @@ async def on_question(
             chat_id=chat_id,
             content=prompt,
             owner_external_id=str(message.chat.id),
+            category=topic,
         )
         await stream_to_bot(message, events)
     except Exception as exc:
@@ -61,6 +70,7 @@ async def on_question(
     finally:
         stop.set()
         await typing_task
+        #await state.clear()
 
 @router.message(Command('cancel'))
 async def cmd_cancel(message:Message,state:FSMContext):

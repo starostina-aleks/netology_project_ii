@@ -39,7 +39,6 @@ message: Message,
     typing_task = asyncio.create_task(
         typing_until(message.bot, message.chat.id, stop))
     try:
-        print("_SEND MEDIA",content,mime,filename)
         events =  backend.send_message(
             chat_id=chat_id,
             content=content,
@@ -106,12 +105,11 @@ async def on_audio(message: Message,backend: BackendClient):
 
 @router.message(F.document)
 async def on_document(message: Message, backend: BackendClient):
-    print("ON DOCS")
     if not message.document.file_name.lower().endswith(ALLOWED_DOC_EXT):
         await message.answer(f"Поддерживаются только {', '.join(ALLOWED_DOC_EXT)}.")
         return
     if message.document.file_size > MAX_DOC_BYTES:
-        await message.answer(f"Файл слтшком большой ({MAX_DOC_BYTES // 1024 // 1024} МБ).")
+        await message.answer(f"Файл слишком большой ({MAX_DOC_BYTES // 1024 // 1024} МБ).")
         return
     file = await message.bot.get_file(message.document.file_id)
     buf = BytesIO()

@@ -6,9 +6,10 @@ from bot.services.backend_client import BackendClient
 from bot.services.streaming import stream_to_bot
 from bot.services.error_handling import handle_backend_error
 from bot.services.typing import typing_until
+from aiogram.fsm.state import default_state
 
 router = Router()
-@router.message(F.text & ~F.text.startswith("/"))
+@router.message(default_state,F.text & ~F.text.startswith("/"))
 async def handle_text(message: Message,backend: BackendClient):
     chat_id=await backend.get_or_create_chat(
         owner_external_id=str(message.chat.id),

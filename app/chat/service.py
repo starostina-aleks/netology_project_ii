@@ -1,5 +1,8 @@
 from uuid import UUID
 import logging
+
+from sympy import categories
+
 from app.chat.domain import Chat,ChatMessage
 from app.chat.repository import ChatRepository,SystemPromptRepository
 from app.services.llm import LLMService
@@ -197,8 +200,10 @@ class ChatService:
     async def send_message(self,
             chat_id:UUID,
             user_content:str|None,
+            category:str|None = None,
             media:UploadFile | None = None,
     )->AsyncIterator[dict]:
+
         media_refs:dict |None=None
         if media is not None:
             mime=media.content_type or ""
@@ -211,6 +216,7 @@ class ChatService:
                 "filename":filename,
                 "part":part,
             }
+        print("SEND MESSAGE", user_content, part)
         chat =await self.repository.get_chat(chat_id)
         if chat is None:
             raise ValueError(f"Chat with id {chat_id} not found")
@@ -235,11 +241,11 @@ class ChatService:
         if self.rag is not None:
             rag_context=await self.rag.generate_rag_context(
                 question=messages[-1].get("content"),
+                #question=_message_content_for_llm(chat_message).get("content"),
                 history=messages[:-1],
+                category=category,
                 use_condense=self.use_condense
             )
-            #print("RAG_CONTEXT",rag_context)
-
             if not rag_context.get("confident"):
                 yield {"type":"token","delta":rag_context.get("text")}
                 saved = await self.repository.append_message(
@@ -255,15 +261,13 @@ class ChatService:
                 return
             messages=messages[:-1]
             sources=rag_context.get("sources")
-            print("RAG_CONTEXT",rag_context.get("text"))
+
             messages.append(
                 {
                     "role": "system",
                     "content":rag_context.get("text")
                 },
             )
-        buffer = ""
-        print("MESSAGES",messages)
         stream=  await self.llm_client.chat.completions.create(
             model=settings.llm.default_model,
             messages=messages,
@@ -320,7 +324,7 @@ class ChatService:
                 "type": "message_saved",
                 "message_id": str(saved.id),
             }
-        if sources:
-            yield {"type": "sources","sources":sources,"confident":True}
+            if sources:
+                yield {"type": "sources","sources":sources}#,"confident":True
 
 

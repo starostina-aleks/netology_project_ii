@@ -50,7 +50,9 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=2.1",
     "langgraph-checkpoint-postgres>=2.1",
     "aiosqlite",
-    "psycopg[binary,pool]>=3.2"
+    "psycopg[binary,pool]>=3.2",
+    "langgraph-supervisor>=0.0.31",
+    "telegramify-markdown>=1.4.0",
 ]
 
 [tool.pytest.ini_options]
