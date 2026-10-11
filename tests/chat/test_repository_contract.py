@@ -42,7 +42,7 @@ async def test_append_mess(repository):
          chat_id=chat.id,
          role="user",
     )
-    time.sleep(1)
+    time.sleep(2)
     await repository.append_message(chat_id=chat.id, message=mess)
     mess = ChatMessage(
         content="ans test",

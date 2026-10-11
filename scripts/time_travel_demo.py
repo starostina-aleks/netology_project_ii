@@ -16,6 +16,9 @@ from pathlib import Path
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
+from langchain_openai import ChatOpenAI
+from app.core.config import get_settings
+from app.services.synonym_service import SynonymService
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -55,18 +58,33 @@ def _initial() -> dict:
         "iteration_count": 0,
         "tool_results": [],
         "draft": None,
-        "is_action_approved": False,
+        "is_synonym_saved": False,
         "count_add": 0,
     }
 
 
 async def main() -> None:
-    sent_log: list[dict] = []
+    settings = get_settings()
+    count_add = 0
     async with AsyncSqliteSaver.from_conn_string(":memory:") as saver:
         await saver.setup()
-        graph = build_agent(saver)
-        role = "write-with-approve2"
-        config = {"configurable": {"thread_id": "demo2", "user_role": role}}
+        from app.tools.graph_tools import tools
+        model = ChatOpenAI(
+            model=settings.llm.default_model,  # например, "gpt-4o"
+            openai_api_key=settings.llm.openai_api_key,  # ваш API-ключ
+            openai_api_base=settings.llm.base_url,  # базовый URL (если используете прокси/vllm)
+            max_tokens=1024,
+            temperature=0.0
+        ).bind_tools(tools)
+        service = SynonymService()
+        write_action = service.add_synonym
+        graph = build_agent(model=model.bind_tools(tools),
+                            tools=tools,
+                            write_action=write_action,
+                            checkpointer=saver, )
+        role = "write-with-approve4"
+        thread_id = "demo10"
+        config = {"configurable": {"thread_id": thread_id, "user_role": role}}
 
         result = await graph.ainvoke(_initial(), config)
         print("1) INTERRUPT payload:", result["__interrupt__"][0].value)
@@ -79,8 +97,9 @@ async def main() -> None:
             print(f"   {cid}  next={snap.next}")
             if snap.next == ("approve_and_add",) and pre_interrupt_id is None:
                 pre_interrupt_id = cid
+
         past = await graph.aget_state(
-            {"configurable": {"thread_id": "demo", "checkpoint_id": pre_interrupt_id}}
+            {"configurable": {"thread_id": thread_id, "checkpoint_id": pre_interrupt_id}}
         )
         print(
             "3) чтение прошлого чек-пойнта: "
@@ -90,14 +109,15 @@ async def main() -> None:
 
         # 4) две ветки из ОДИНАКОВОГО входа: отказ на основном треде, одобрение — на
         # альтернативном (resume хранится в чек-пойнтере детерминированно на тред).
-        rejected = await graph.ainvoke(Command(resume=True), config)
-        alt = {"configurable": {"thread_id": "demo-alt", "user_role": role}}
+        rejected = await graph.ainvoke(Command(resume=False), config)
+        alt = {"configurable": {"thread_id": "demo-alt1", "user_role": role}}
         await graph.ainvoke(_initial(), alt)
         approved = await graph.ainvoke(Command(resume=True), alt)
+        count_add = rejected['count_add']+approved['count_add']
 
         print(
-            f"4) две ветки: отказ → is_synonym_saved={rejected['is_synonym_saved']}, "
-            f"одобрение → is_synonym_saved={approved['is_synonym_saved']}, отправок={approved['count_add']}"
+            f"4) две ветки: отказ → is_synonym_saved={rejected['is_synonym_saved']} "
+            f"одобрение → is_synonym_saved={approved['is_synonym_saved']}, отправок={count_add}"
         )
         print("Итог: один и тот же вход дал две ветки — отказ (is_synonym_saved=False) и одобрение (is_synonym_saved=True).")
 

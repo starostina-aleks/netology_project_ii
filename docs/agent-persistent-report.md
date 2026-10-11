@@ -121,15 +121,17 @@ CONTENT: Успешно. Для аббревиатуры 'пэж' добавле
 ```
 ### 5) Time travel:
 
-1) INTERRUPT payload: {'preview': {'abbreviation': 'СУБД', 'synonyms': ['система управления базами данных'], 'tool_call_id': 'call_V2aMpmEnK7OjxrP4EZO33F8a'}, 'type': 'approve_add_synonym'}
+```bash
+1) INTERRUPT payload: {'preview': {'abbreviation': 'СУБД', 'synonyms': ['система управления базами данных'], 'tool_call_id': 'call_NlAavp7cqPNjR1gl9oMNAbD1'}, 'type': 'approve_add_synonym'}
 2) история чек-пойнтов (checkpoint_id / next / ключи state):
-   1f1c3c61-9b6c-6d8b-8002-3574a769fa9f  next=('approve_and_add',)
-   1f1c3c61-9b6a-6676-8001-3bbff515d899  next=('prepare_synonyms',)
-   1f1c3c61-8e07-6a2a-8000-9519574d5f8a  next=('call_model',)
-   1f1c3c61-8e00-64fa-bfff-d7d14a0cd9c5  next=('__start__',)
+   1f1c5685-e2c7-6048-8002-a59e52490c1d  next=('approve_and_add',)
+   1f1c5685-e2c7-6047-8001-dce69caf0fb6  next=('prepare_synonyms',)
+   1f1c5685-d850-6c3a-8000-a6493360acb3  next=('call_model',)
+   1f1c5685-d850-6c39-bfff-33156c79efb6  next=('__start__',)
 3) чтение прошлого чек-пойнта: saved=False, draft_готов=True, next=('approve_and_add',)
-4) две ветки: отказ → is_synonym_saved=False, одобрение → sent=False, отправок=0
-Итог: один и тот же вход дал две ветки — отказ (sent=False) и одобрение (sent=True).
+4) две ветки: отказ → is_synonym_saved=False одобрение → is_synonym_saved=True, отправок=1
+Итог: один и тот же вход дал две ветки — отказ (is_synonym_saved=False) и одобрение (is_synonym_saved=True).
+```
 
 ### 6) Поток событий узлов и токенов POST /agent/stream
 
