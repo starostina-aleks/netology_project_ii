@@ -26,7 +26,7 @@ BATCH_MAX = 20
 
 async def chat_completions(req: ChatRequest, service: LLMServiceDep) -> ChatResponse:
     ans=await  service.complete(req)
-    print(ans.content)
+
     return ans
 
 

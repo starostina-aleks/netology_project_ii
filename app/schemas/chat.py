@@ -34,7 +34,7 @@ class ChatRequest(BaseModel):
                         {"role": "system", "content": "Ты полезный ассистент."},
                         {"role": "user", "content": "Напиши hello world на Python"},
                     ],
-                    "model": "gpt-4o-mini",
+                    "model": "openai/gpt-oss-120b:free",
                     "temperature": 0.2,
                 }
             ]
