@@ -51,13 +51,6 @@ def build_agent(model,tools, write_action,
         }
 
     async def call_model(state: AgentState) -> dict:
-        print("MESSAGES")
-        for message in state["messages"]:
-            print(
-                type(message).__name__,
-                getattr(message, "tool_call_id", None),
-                getattr(message, "tool_calls", None),
-            )
         response = await bound_model.ainvoke(state["messages"])
         return {
             "messages": [response],
@@ -110,7 +103,6 @@ def build_agent(model,tools, write_action,
             count_add += 1
         else:
             content = "Действие отменено пользователем"
-        print(f"TOOL_CALL_ID = {draft.get("tool_call_id", "")}")
         return {
             "is_synonym_saved": decision,
             "messages": [

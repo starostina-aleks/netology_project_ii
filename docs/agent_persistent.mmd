@@ -5,17 +5,19 @@ config:
 ---
 graph TD;
 	__start__([<p>__start__</p>]):::first
+	compact_history(compact_history)
 	call_model(call_model)
 	execute_tool(execute_tool)
 	prepare_synonyms(prepare_synonyms)
 	approve_and_add(approve_and_add)
 	force_finish(force_finish)
 	__end__([<p>__end__</p>]):::last
-	__start__ --> call_model;
+	__start__ --> compact_history;
 	approve_and_add --> call_model;
 	call_model -.-> execute_tool;
 	call_model -.-> force_finish;
 	call_model -.-> prepare_synonyms;
+	compact_history --> call_model;
 	execute_tool --> call_model;
 	prepare_synonyms --> approve_and_add;
 	force_finish --> __end__;

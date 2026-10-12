@@ -206,7 +206,7 @@ class RAGService:
             category:str|None=None,
             use_condense:bool=True
     )->dict|None:
-        print("GENERATE RAG CONTEXT",question,history)
+        print("GENERATE RAG CONTEXT",question,category)
         if self._retriever is None:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
         search_query = question
@@ -232,7 +232,9 @@ class RAGService:
             print("FILTERS=",category)
             nodes=await self.retrieve(query=search_query,filters=metadata_filters)
         top_score = max((sn.score or 0.0 for sn in nodes), default=0.0)
+        print("TOP SCORE=",top_score)
         if not nodes or top_score < self._settings.rag_score_threshold:
+            print("REFUSE")
             return {
                 "text": REFUSAL_TEXT,
                 "top_score": round(top_score, 3),
