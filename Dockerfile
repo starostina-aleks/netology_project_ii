@@ -25,6 +25,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 RUN uv pip install ./wheels/ru_core_news_md-3.8.0-py3-none-any.whl
+RUN /app/.venv/bin/python -m nltk.downloader -d /app/nltk_data punkt_tab
+
 # ========== STAGE 2: RUNTIME ==========
 FROM python:3.13-slim-bookworm
 
@@ -36,7 +38,8 @@ COPY --from=builder --chown=appuser:appuser /app /app
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    NLTK_DATA="/app/nltk_data"
 
 USER appuser
 EXPOSE 8000

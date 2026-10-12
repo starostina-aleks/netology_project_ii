@@ -5,7 +5,7 @@ from pathlib import Path
 settings = get_settings()
 
 def get_top_level_categories() -> list[str]:
-    json_path=settings.rag_data_dir/"documents.json"
+    json_path="app/data/documents.json"
     with Path(json_path).open("r", encoding="utf-8") as f:
         data = json.load(f)
 

@@ -7,7 +7,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pathlib import Path
 import asyncio
 from typing import Annotated, Any, Literal, TypedDict
-from langchain_core.messages import AnyMessage, ToolMessage, HumanMessage
+from langchain_core.messages import AnyMessage, ToolMessage, HumanMessage, SystemMessage, get_buffer_string
+
 from langchain_core.tools import tool, StructuredTool
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -34,6 +35,21 @@ def build_agent(model,tools, write_action,
     checkpointer: Any
 ):
     bound_model = model.bind_tools(tools)
+
+    async def compact_history(state: AgentState) -> dict:
+        messages = state["messages"]
+        print("MESSAGES",get_buffer_string(messages))
+        if len(messages) <= 20:
+            return {}
+        old,recent = messages[:-10],messages[-10:]
+        summary= await model.ainvoke(
+            f"Сожми историю в 5 предложений, сохрани ключевые решения и tool- результат:\n"
+            f"{get_buffer_string(old)}"
+        )
+        return{
+            "messages": [SystemMessage(f"Резуме предыдущих шагов {summary.content}")] + recent,
+        }
+
     async def call_model(state: AgentState) -> dict:
         print("MESSAGES")
         for message in state["messages"]:
@@ -119,12 +135,14 @@ def build_agent(model,tools, write_action,
 
 
     builder = StateGraph(AgentState)
+    builder.add_node("compact_history", compact_history)
     builder.add_node("call_model", call_model)
     builder.add_node("execute_tool", execute_tool)
     builder.add_node("prepare_synonyms", prepare_synonyms)
     builder.add_node("approve_and_add", approve_and_add)
     builder.add_node("force_finish", force_finish)
-    builder.add_edge(START, "call_model")
+    builder.add_edge(START, "compact_history")
+    builder.add_edge("compact_history", "call_model")
     builder.add_conditional_edges(
         "call_model",
         route_after_model,
@@ -192,6 +210,13 @@ async def main():
                 postgres_url=settings.database_url,
             )
         )
+        mermaid = custom_graph.get_graph().draw_mermaid()
+        mermaid_png = custom_graph.get_graph().draw_mermaid_png()
+        name="agent_persistent"
+        with open(f"docs/{name}.mmd", "w") as fh:
+            fh.write(mermaid)
+        with open(f"docs/{name}.png", "wb") as fh:
+            fh.write(mermaid_png)
         query = "Найди в документах расшифровку ПЭЖ и добавь в базу данных"
         # Передаем config с thread_id, так как мы используем checkpointer
         config = {"configurable": {"thread_id": "secure_session_7"}}

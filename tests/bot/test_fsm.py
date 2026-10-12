@@ -20,7 +20,7 @@ async def test_state_transition():
     await start_ask(message,ctx)
     assert await ctx.get_state() == "AskFlow:waiting_for_topic"
     callback=AsyncMock(spec=CallbackQuery)
-    callback.data="topic:ustav"
+    callback.data="topic:1"
     callback.message=AsyncMock()
     callback.message.edit_text=AsyncMock()
     callback.answer=AsyncMock()
@@ -28,4 +28,4 @@ async def test_state_transition():
     # Проверяем результат работы handler
     assert await ctx.get_state() == "AskFlow:waiting_for_question"
     data = await ctx.get_data()
-    assert data["topic"] == "ustav"
+    assert data["topic"] == "Нормативные документы"

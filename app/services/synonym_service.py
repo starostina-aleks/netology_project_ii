@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class SynonymService:
-    def __init__(self, file_path: str = "var/synonyms.json"):
+    def __init__(self, file_path: str = "app/data/synonyms.json"):
         """
         Инициализация сервиса работы со словарем синонимов.
         """

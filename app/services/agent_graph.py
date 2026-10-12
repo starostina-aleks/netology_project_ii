@@ -17,8 +17,6 @@ class AgentState(TypedDict):
     iteration_count: int
     tool_results: list[dict]
 
-
-
 def build_custom_graph(model: BaseChatModel, tools: list[BaseTool]):
     """Компилирует ReAct-граф из трёх узлов и условного ребра."""
     bound_model = model.bind_tools(tools)

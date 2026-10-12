@@ -24,7 +24,7 @@ def get_knowledge_map():
 
     """
     result = []
-    input_json_path=settings.rag_data_dir/"documents.json"
+    input_json_path="app/data/documents.json"
     with open(input_json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
         documents = data["documents"]

@@ -122,7 +122,7 @@ class IngestionService:
         self._manifest_docs=self._get_manifest_docs()
 
     def _get_manifest_docs(self):
-        docs_json = self._settings.rag_data_dir/"documents.json"
+        docs_json = "app/data/documents.json"
         try:
             with open(docs_json, "r", encoding="utf-8") as f:
                 data = json.load(f)
