@@ -6,8 +6,6 @@ import hashlib, json
 from app.core.config import get_settings
 import numpy as np
 import time
-
-#dim=768
 class EmbeddingsClient:
     def __init__(
             self,
