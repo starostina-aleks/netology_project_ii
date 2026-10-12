@@ -3,6 +3,7 @@ from functools import lru_cache
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Literal
+from pathlib import Path
 
 
 class LLMSettings(BaseSettings):
@@ -31,12 +32,23 @@ class Settings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     # Строгая валидация уровня логирования (только верхний регистр)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
-    rate_limit_per_min: int = 30
     embedding_model:str=r"F:\embeddings\multilingual-e5-base"
-
-
-
-
+    rate_limit_per_min: int = 30
+    qdrant_url:str = "http://localhost:6333"
+    # Опционально. Если пусто — Qdrant запускается без аутентификации (dev-режим).
+    # В production генерировать через `openssl rand -hex 32`.
+    qdrant_api_key: SecretStr | None = None
+    # Имя коллекции для документов проекта.
+    qdrant_collection:str= "documents"
+    embedding_dim:int=768
+    rag_score_threshold:float=0.3
+    rag_collection:str="rag_block_03"
+    rag_data_dir:Path=Path("data/rag_ustav")
+    rag_top_k:int=3
+    rag_chunk_size: int = 512
+    rag_chunk_overlap: int = 64
+    https_proxy: str
+    rag_llm_model: str = "openai/gpt-oss-20b:free"
 
 @lru_cache
 def get_settings() -> Settings:
