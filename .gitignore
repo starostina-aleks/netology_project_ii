@@ -2,4 +2,5 @@
 .env
 __pycache__/
 .idea/
+garack_env/
 .embedding_cache

@@ -20,13 +20,18 @@ def get_cache(request: Request):
 
 CacheDep = Annotated[object, Depends(get_cache)]
 
+def get_canary(request: Request) -> str:
+    return request.app.state.canary
+canaryDep= Annotated[str, Depends(get_canary)]
 
 def get_llm_service(
     llm: LLMDep,
     cache: CacheDep,
     settings: SettingsDep,
+    canary: canaryDep,
 ) -> LLMService:
-    return LLMService(llm=llm, cache=cache, ttl=settings.cache_ttl_seconds)
+    return LLMService(llm=llm, cache=cache,canary=canary, ttl=settings.cache_ttl_seconds)
 
 
 LLMServiceDep = Annotated[LLMService, Depends(get_llm_service)]
+

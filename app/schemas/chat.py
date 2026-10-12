@@ -32,7 +32,8 @@ class ChatRequest(BaseModel):
                         {"role": "system", "content": "Ты полезный ассистент."},
                         {"role": "user", "content": "Напиши hello world на Python"},
                     ],
-                    "model": "openai/gpt-oss-120b:free",
+                    "model": "gpt-4o-mini",
+                    "max_tokens":256,
                     "temperature": 0.2,
                 }
             ]
@@ -42,7 +43,7 @@ class ChatRequest(BaseModel):
     messages: Annotated[list[Message], Field(min_length=1, max_length=50)]
     model: str = "gpt-4o-mini"
     temperature: Annotated[float, Field(ge=0.0, le=2.0)] = 0.7
-    max_tokens: Annotated[int, Field(ge=1, le=16_000)] = 1024
+    max_tokens: Annotated[int, Field(ge=1, le=16_000)] = 256
     user_id: str | None = None
     session_id: str | None = None
 

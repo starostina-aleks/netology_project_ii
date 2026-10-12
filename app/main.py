@@ -10,19 +10,20 @@ from fastapi.exceptions import RequestValidationError
 from openai import AsyncOpenAI
 from structlog.contextvars import bind_contextvars, clear_contextvars
 import structlog
+import secrets
 
-
+from app.routers import chat, health, models
+from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
+from app.observability.tracing import setup_tracing
+from app.observability.logging import setup_logging
+from app.core.config import get_settings
 
 try:
     from redis.asyncio import Redis
 except ImportError:
     Redis = None  # type: ignore
 
-from app.core.config import get_settings
-from app.routers import chat, health, models
-from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
-from app.observability.tracing import setup_tracing
-from app.observability.logging import setup_logging
+
 
 #logger = logging.getLogger("llm-service")
 #logging.basicConfig(level=logging.INFO)
@@ -30,15 +31,16 @@ from app.observability.logging import setup_logging
 settings = get_settings()
 setup_logging(settings.log_level)
 logger = structlog.get_logger()
+canary = f"CANARY_{secrets.token_hex(4)}"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_tracing()
-
+    app.state.canary=canary
     app.state.llm = AsyncOpenAI(
         api_key=settings.llm.openai_api_key.get_secret_value(),
         base_url=settings.llm.base_url,
-        timeout=settings.llm.request_timeout,
+        #timeout=settings.llm.request_timeout,
         max_retries=settings.llm.max_retries,
     )
 
@@ -78,6 +80,37 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     expose_headers=["X-Request-ID", "X-LLM-Cost-USD"],
 )
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    redis = request.app.state.redis
+
+    # Если Redis недоступен — пропускаем запрос
+    if redis is None:
+        return await call_next(request)
+
+    user_id = request.headers.get("X-User-ID")
+
+    if user_id:
+        client = f"user:{user_id}"
+    else:
+        client = f"ip:{request.client.host}"
+
+    minute = int(time.time() // 60)
+    key = f"rate_limit:{client}:{minute}"
+
+    count = await redis.incr(key)
+
+    if count == 1:
+        await redis.expire(key, 60)
+
+    if count > settings.rate_limit_per_min:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded"},
+            headers={"Retry-After": "60"},
+        )
+    return await call_next(request)
 
 @app.middleware("http")
 async def observability_middleware(request: Request, call_next):

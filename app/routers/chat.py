@@ -23,10 +23,8 @@ BATCH_MAX = 20
         429: {"description": "Rate limit провайдера"},
     },
 )
-
 async def chat_completions(req: ChatRequest, service: LLMServiceDep) -> ChatResponse:
     ans=await  service.complete(req)
-
     return ans
 
 
