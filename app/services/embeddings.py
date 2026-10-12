@@ -22,14 +22,14 @@ class EmbeddingsClient:
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
-    async def _encode_batch(self, batch: list[str]) -> list[list[float]]:
+    async def _encode_batch(self, texts: list[str],batch_size=64) -> list[list[float]]:
 
         embeddings = await asyncio.to_thread(
             self._model.encode,
-            batch,
+            texts,
             normalize_embeddings=True,
-            batch_size=len(batch),
-            show_progress_bar=False
+            batch_size=batch_size,
+            show_progress_bar=True
         )
         return embeddings.tolist()
 
@@ -98,6 +98,7 @@ async def main():
     model_path = settings.embedding_model
     model = SentenceTransformer(model_path)
     client = EmbeddingsClient(model)
+    print(model.get_embedding_dimension())
 
     execution_time_1 = await _smoke(client)
     print(f"Время выполнения бенчмарка 1 (Холодный): {execution_time_1:.3f} сек.")
