@@ -55,7 +55,7 @@ def _initial() -> dict:
         "iteration_count": 0,
         "tool_results": [],
         "draft": None,
-        "is_action_approved": False,
+        "is_synonym_saved": False,
         "count_add": 0,
     }
 
@@ -65,8 +65,8 @@ async def main() -> None:
     async with AsyncSqliteSaver.from_conn_string(":memory:") as saver:
         await saver.setup()
         graph = build_agent(saver)
-        role = "write-with-approve2"
-        config = {"configurable": {"thread_id": "demo2", "user_role": role}}
+        role = "write-with-approve6"
+        config = {"configurable": {"thread_id": "demo6", "user_role": role}}
 
         result = await graph.ainvoke(_initial(), config)
         print("1) INTERRUPT payload:", result["__interrupt__"][0].value)
@@ -82,6 +82,7 @@ async def main() -> None:
         past = await graph.aget_state(
             {"configurable": {"thread_id": "demo", "checkpoint_id": pre_interrupt_id}}
         )
+        print("PAST=",past)
         print(
             "3) чтение прошлого чек-пойнта: "
             f"saved={past.values['is_synonym_saved']}, draft_готов={past.values['draft'] is not None}, "
