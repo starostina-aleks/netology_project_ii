@@ -14,3 +14,4 @@ def test_pii():
     expected_text_presidio="Мой email [PII], тел [PII], карта [PII]"
     assert prompt_preview_reg == expected_text_reg
     assert prompt_preview_presidio == expected_text_presidio
+

@@ -4,6 +4,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 from app.deps.providers import get_cache, get_llm
 from app.main import app
+import httpx
+from openai import (
+        APIConnectionError,
+        APITimeoutError,
+        AuthenticationError,
+        BadRequestError,
+        RateLimitError,
+    )
 
 #имитирует официальный ответ от API OpenAI
 def _make_openai_response(content: str = "мок-ответ", model: str = "gpt-4o-mini"):
@@ -19,10 +27,40 @@ def _make_openai_response(content: str = "мок-ответ", model: str = "gpt-
     )
 
 
+def make_rate_limit_error():
+    request = httpx.Request(
+        "POST",
+        "https://api.openai.com/v1/chat/completions",
+    )
+
+    response = httpx.Response(
+        status_code=429,
+        request=request,
+        json={
+            "error": {
+                "message": "rate limit",
+                "type": "rate_limit_error",
+            }
+        },
+    )
+    return RateLimitError(
+        message="429",
+        response=response,
+        body=response.json(),
+    )
+
+'''
 @pytest.fixture
 def mock_llm():
     llm = AsyncMock()
     llm.chat.completions.create = AsyncMock(return_value=_make_openai_response())
+    return llm
+'''
+
+@pytest.fixture
+def mock_llm():
+    llm = AsyncMock()
+    llm.chat.completions.create = AsyncMock()
     return llm
 
 
