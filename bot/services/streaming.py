@@ -8,6 +8,7 @@ from bot.keyboards.inline import feedback_kb
 import telegramify_markdown
 from aiogram.enums import ChatAction
 import httpx
+from app.services.rag import parse_citations
 
 DRAFT_MIN_INTERVAL_SEC=0.7
 
@@ -18,6 +19,7 @@ def _to_tg_markdown(rext:str)->str:
         return rext
 
 async def stream_to_bot(message: Message,events)->str:
+
     draft_id = uuid.uuid4().int & 0xFFFFFFFF
     buffer = ""
     last_draft_at = 0.0
@@ -26,7 +28,6 @@ async def stream_to_bot(message: Message,events)->str:
     await message.bot.send_message_draft(
         chat_id=message.chat.id,text="",draft_id=draft_id,
     )
-
     last_draft_at = monotonic()
     async for event in events:
         if event.get("type") == "token":
@@ -48,11 +49,15 @@ async def stream_to_bot(message: Message,events)->str:
         elif event.get("type") == "sources":
             sources = event.get("sources")
             if sources:
-                buffer += "\n\nИсточники:\n"+"\n".join(
-                        f"[{s['id']} {s['file_nme']}]"
+                text_s=parse_citations(str(buffer), sources)
+                """
+                text_s="\n\nИсточники:\n"+"\n".join(
+                        f"[{s.get('id')} {s.get('source')}]"
                         +(f", c. {s['page']}" if s.get('page') else "")
                          for s in sources)
-
+                """
+                #buffer += "\n\nИсточники:\n"+text_s
+                buffer = text_s
     if buffer:
         reply_markup=(
             feedback_kb(assistant_message_id) if assistant_message_id else None

@@ -13,20 +13,13 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_openai import ChatOpenAI
 from app.services.synonym_service import SynonymService
-from app.tools.react_tools import (
-    search_knowledge_base,
-    get_knowledge_map,
-    query_decomposition,
-    query_rewriter,
-    get_current_time,
-    send_telegram_message
-)
+
 from app.core.config import get_settings
 from langgraph.types import interrupt, Command
 from contextlib import AsyncExitStack
 
-settings = get_settings()
-service = SynonymService()
+
+DANGEROUS_TOOL = "add_custom_synonym"
 
 class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
@@ -36,93 +29,20 @@ class AgentState(TypedDict):
     is_synonym_saved: bool
     count_add: int
 
-search_knowledge_base = StructuredTool.from_function(
-    func=None,
-    coroutine=search_knowledge_base,
-    name="search_knowledge_base",
-    description="Ищет информацию во внутренней базе знаний по содержимому документов."
-)
 
-get_knowledge_map = StructuredTool.from_function(
-    func=get_knowledge_map,
-    name="get_knowledge_map", # Имя для LLM
-    description="Возвращает структуру внутренней базы знаний в виде «категория → документы»."
-)
-
-query_decomposition = StructuredTool.from_function(
-    func=query_decomposition,
-    name="query_decomposition",
-    description="Разбивает сложный пользовательский запрос на массив простых атомарных подзапросов."
-)
-
-query_rewriter = StructuredTool.from_function(
-    func=query_rewriter,
-    name="query_rewriter",
-    description="Превращает разговорный запрос в профессиональную поисковую фразу для multilingual-e5-base."
-)
-
-get_current_time = StructuredTool.from_function(
-    func=get_current_time,
-    name="get_current_time",
-    description="Текущие дата и время в указанном часовом поясе в формате ISO 8601."
-)
-
-send_telegram_message = StructuredTool.from_function(
-    func=send_telegram_message,
-    name="send_telegram_message",
-    description="Отправка сообщения клиенту в Telegram."
-)
-
-@tool
-def add_custom_synonym(
-    abbreviation: str,
-    synonyms: list[str]
-) -> str:
-
-    """
-    Обогащает лингвистическую базу корпоративного поискового движка.
-    Связывает аббревиатуры, внутренний сленг или сокращения с их полными и альтернативными названиями.
-
-    ОБЯЗАТЕЛЬНО К ИСПОЛЬЗОВАНИЮ, если:
-    1. Вы (агент) анализируете текст и обнаружили профессиональный сленг, сокращение или аббревиатуру
-    2. Пользователь явно просит добавить новое правило поиска или расшифровку для улучшения качества выдачи.
-    3. Документы содержат разные варианты написания одного и того же термина, из-за чего обычный поиск может их пропустить.
-
-    Инструмент гарантирует, что поисковый агент при сканировании документов по ключевому слову из `abbreviation` найдет также все документы,содержащие элементы из `synonyms`, и наоборот.
-
-    Args:
-        abbreviation: Исходное сокращение, аббревиатура или ключевое слово (например, 'ВВС').
-        synonyms: Список альтернативных названий, сленга, расшифровок или близких по смыслу терминов (например, ['Военно-воздушные силы']).
-
-    Returns:
-        str: Статус операции (успешно добавлено / обновлено / ошибка).
-    """
-    return "queued-for-approval"
-
-DANGEROUS_TOOL = "add_custom_synonym"
-
-tools = [search_knowledge_base,
-         get_knowledge_map,
-         query_decomposition,
-         query_rewriter,
-         get_current_time,
-         send_telegram_message,
-         add_custom_synonym
-         ]
-
-model = ChatOpenAI(
-    model=settings.llm.default_model,                  # например, "gpt-4o"
-    openai_api_key=settings.llm.openai_api_key,# ваш API-ключ
-    openai_api_base=settings.llm.base_url,     # базовый URL (если используете прокси/vllm)
-    max_tokens=1024,
-    temperature=0.0
-).bind_tools(tools)
-
-def build_agent(
+def build_agent(model,tools, write_action,
     checkpointer: Any
 ):
+    bound_model = model.bind_tools(tools)
     async def call_model(state: AgentState) -> dict:
-        response = await model.ainvoke(state["messages"])
+        print("MESSAGES")
+        for message in state["messages"]:
+            print(
+                type(message).__name__,
+                getattr(message, "tool_call_id", None),
+                getattr(message, "tool_calls", None),
+            )
+        response = await bound_model.ainvoke(state["messages"])
         return {
             "messages": [response],
             "iteration_count": state["iteration_count"] + 1
@@ -168,10 +88,13 @@ def build_agent(
         count_add = state["count_add"] or 0
         decision = interrupt({"preview": draft, "type": "approve_add_synonym"})
         if decision is True:
-            content = service.add_synonym(abbreviation=draft.get("abbreviation"), synonyms=draft.get("synonyms"))
+            print("DECISION  = TRUE")
+            content = write_action(abbreviation=draft.get("abbreviation"), synonyms=draft.get("synonyms"))
+            print(f"SERVICE ANSWER  {content}")
             count_add += 1
         else:
             content = "Действие отменено пользователем"
+        print(f"TOOL_CALL_ID = {draft.get("tool_call_id", "")}")
         return {
             "is_synonym_saved": decision,
             "messages": [
@@ -221,40 +144,57 @@ def build_agent(
 
 
 @asynccontextmanager
-async def agent_lifespan(
+async def agent_lifespan(model,tools,write_action,
     backend: Literal["memory", "sqlite", "postgres"],
     sqlite_path: str = "var/agent_checkpoints.sqlite",
     postgres_url: str = "",
 ) -> AsyncIterator[Any]:
     if backend == "memory":
         # InMemorySaver не требует setup() и живёт в памяти процесса.
-        yield build_agent(InMemorySaver())
+        yield build_agent(model=model,tools=tools,write_action=write_action,checkpointer=InMemorySaver())
     elif backend == "sqlite":
         Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
         async with AsyncSqliteSaver.from_conn_string(sqlite_path) as saver:
             await saver.setup()
-            yield build_agent(saver)
+            yield build_agent(model=model,tools=tools,write_action=write_action,checkpointer=saver)
     elif backend == "postgres":
         postgres_url=postgres_url.replace("postgresql+asyncpg://", "postgresql://")
         async with AsyncPostgresSaver.from_conn_string(postgres_url) as saver:
             await saver.setup()
-            yield build_agent(saver)
+            yield build_agent(model=model,tools=tools,write_action=write_action,checkpointer=saver)
     else:
         raise ValueError(f"неизвестный AGENT_CHECKPOINTER: {backend!r}")
 
 async def main():
     agent_stack = AsyncExitStack()
     try:
+        from app.tools.graph_tools import tools
+        from app.agents.tools import build_search_knowledge_base
+        from app.services.rag import RAGService
+        settings = get_settings()
+        rag = RAGService(settings)
+        rag.build()
+        service = SynonymService()
+        search_knowledge_base=build_search_knowledge_base(rag.answer)
+        full_tools = [*tools, search_knowledge_base]
+        model = ChatOpenAI(
+            model=settings.llm.default_model,  # например, "gpt-4o"
+            openai_api_key=settings.llm.openai_api_key,  # ваш API-ключ
+            openai_api_base=settings.llm.base_url,  # базовый URL (если используете прокси/vllm)
+            max_tokens=1024,
+            temperature=0.0
+        )
+        write_action = service.add_synonym
         custom_graph = await agent_stack.enter_async_context(
-            agent_lifespan(
-                settings.agent_checkpointer,
+            agent_lifespan(model=model,tools=full_tools, write_action=write_action,
+                backend=settings.agent_checkpointer,
                 sqlite_path=settings.agent_sqlite_path,
                 postgres_url=settings.database_url,
             )
         )
         query = "Найди в документах расшифровку ПЭЖ и добавь в базу данных"
         # Передаем config с thread_id, так как мы используем checkpointer
-        config = {"configurable": {"thread_id": "secure_session_6"}}
+        config = {"configurable": {"thread_id": "secure_session_7"}}
         #final = await custom_graph.ainvoke(Command(resume=True), config)
         state = await custom_graph.aget_state(config)
 
@@ -287,7 +227,7 @@ async def main():
 
 
     except Exception as e:
-        print("Агентный граф не собран (%s)", e)
+        print(f"Агентный граф не собран ({e})")
 
 
     """

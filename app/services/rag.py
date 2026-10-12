@@ -11,6 +11,8 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from app.services.condense import condense_question
+from llama_index.core.vector_stores import MetadataFilter, MetadataFilters, FilterOperator
+
 import logging
 
 import httpx
@@ -39,11 +41,19 @@ def _numbered_context(nodes: list[NodeWithScore]) -> str:
     return "\n\n".join(f"[{i}] {sn.get_content}" for i, sn in enumerate(nodes, start=1))
 
 def parse_citations(text:str,sources:list[dict])->str:
-    by_id={s["id"]:s for s in sources}
+    by_id={s.get("id"):s for s in sources}
     def replace(match:re.Match)->str:
         source=by_id.get(int(match.group(1)))
-        return f"[{match.group(1)}-{source['source']}]" if source else match.group(0)
-    return re.sub(r"\[(\d+)\]",replace,text)
+        #return f"[{match.group(1)}-{source.get('source')} ]" if source else match.group(0)
+        return (
+            f"[{match.group(1)}-{source.get('source')}"
+            + (f", с. {source['page']}" if source.get("page") else "")
+            + "]"
+            if source
+            else match.group(0)
+        )
+    res=re.sub(r"\[(\d+)\]",replace,text)
+    return res
 
 def build_sources(source_nodes:list[NodeWithScore]) -> list[dict]:
     sources=[]
@@ -193,8 +203,10 @@ class RAGService:
             self,
             question:str,
             history: list[dict],
+            category:str|None=None,
             use_condense:bool=True
     )->dict|None:
+        print("GENERATE RAG CONTEXT",question,history)
         if self._retriever is None:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
         search_query = question
@@ -205,7 +217,20 @@ class RAGService:
                 history,
                 model=self._settings.model_condense,
             )
-        nodes=await self._retrieve(search_query)
+        if category is None:
+            nodes=await self._retrieve(search_query)
+        else:
+            filters = []
+            filters.append(
+                    MetadataFilter(
+                        key="folder_parts",
+                        value=[category],
+                        operator=FilterOperator.IN,
+                    )
+                )
+            metadata_filters = MetadataFilters(filters=filters)
+            print("FILTERS=",category)
+            nodes=await self.retrieve(query=search_query,filters=metadata_filters)
         top_score = max((sn.score or 0.0 for sn in nodes), default=0.0)
         if not nodes or top_score < self._settings.rag_score_threshold:
             return {
@@ -281,11 +306,7 @@ class RAGService:
         )
         return scroll_results
 
-    async def retrieve(self,query:str,top_k:int=None, filters = None):
-
-        #nodes = await self._retrieve(query)
-        #return nodes[:top_k]
-
+    async def retrieve(self,query:str,filters = None):
         loc_retriever = self._retriever
         if filters is not None:
             loc_retriever = self._index.as_retriever(
@@ -298,7 +319,8 @@ class RAGService:
         nodes = await loc_retriever.aretrieve(query)
         for postprocessor in self._postprocessor:
             nodes = postprocessor.postprocess_nodes(nodes, query_str=query)
-        return _numbered_context(nodes)
+        return nodes
+        #return _numbered_context(nodes)
 
     def get_prev_text(self,prev_node_id):
         qdrant_client = self._index.vector_store.client

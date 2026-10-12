@@ -13,6 +13,7 @@ from tenacity import (
     retry=retry_if_exception_type((httpx.ConnectError,httpx.ConnectTimeout)),
     reraise=True,
     )
+
 async def post_with_retry(client:httpx.AsyncClient,url:str,**kw):
     r=await client.post(url,**kw)
     r.raise_for_status()
@@ -44,13 +45,13 @@ class BackendClient:
             self,
             chat_id: UUID,
             content: str,
+            category:str| None = None,
             media: bytes|None=None,
             mime: str |None=None,
             filename:str="file.bin",
             owner_external_id: str |None=None,
     )->AsyncIterator[dict]:
-
-        data={"content":content}
+        data={"content":content,"category":category or ""}
         files={"media":(filename,media,mime)} if media is not None else None
         headers = (
             {"X-Owner-External-Id": owner_external_id}
@@ -72,7 +73,7 @@ class BackendClient:
             ptype=payload.get("type")
             if ptype=="done":
                 return
-            if ptype in("token","message_saved"):
+            if ptype in("token","message_saved","sources"):
                 yield payload
 
     async def clear_messages(

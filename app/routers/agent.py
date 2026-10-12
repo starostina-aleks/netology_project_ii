@@ -1,9 +1,9 @@
 """Ручки агентного слоя: прогон персистентного ReAct-графа с HIL.
 
-- `POST /agent/chat` — один шаг диалога; если агент дошёл до опасного действия,
+- `POST /agents/chat` — один шаг диалога; если агент дошёл до опасного действия,
   вернётся `status="interrupted"` с payload для подтверждения.
-- `POST /agent/resume` — возобновление после подтверждения человеком.
-- `POST /agent/stream` — SSE-поток прогресса по узлам и токенов LLM.
+- `POST /agents/resume` — возобновление после подтверждения человеком.
+- `POST /agents/stream` — SSE-поток прогресса по узлам и токенов LLM.
 """
 
 import json
@@ -16,9 +16,9 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel
 
-from app.deps.providers import AgentGraphDep
+from app.deps.providers import AgentGraphDep,SupervisorDep
 
-router = APIRouter(prefix="/agent", tags=["agent"])
+router = APIRouter(prefix="/agents", tags=["agents"])
 
 
 def _config(thread_id: str, user_role: str = "write-with-approve") -> dict:
@@ -32,6 +32,7 @@ def _initial_state(message: str) -> dict:
         "tool_results": [],
         "draft": None,
         "is_synonym_saved": False,
+        "count_add": 0,
     }
 
 
@@ -140,3 +141,24 @@ async def agent_stream(
         yield 'data: {"type": "done"}\n\n'
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
+
+class ResearchRequest(BaseModel):
+    question: str
+    thread_id: str = "research-default"
+
+
+class ResearchResponse(BaseModel):
+    answer: str
+
+@router.post("/research", response_model=ResearchResponse)
+async def agent_research(
+    req: ResearchRequest, supervisor: SupervisorDep
+) -> ResearchResponse:
+    """Мультиагент: researcher (RAG) собирает факты, writer оформляет ответ."""
+    if supervisor is None:
+        raise HTTPException(status_code=503, detail="мультиагент не инициализирован")
+    result = await supervisor.ainvoke(
+        {"messages": [HumanMessage(req.question)]},
+        {"configurable": {"thread_id": req.thread_id}},
+    )
+    return ResearchResponse(answer=result["messages"][-1].content or "")

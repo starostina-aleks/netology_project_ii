@@ -14,7 +14,7 @@ import secrets
 
 from app.routers import chat, health, models,rag, documents, agent
 from app.core.exceptions import LLMError, LLMRateLimitError, LLMTimeoutError, LLMAuthError, LLMContentFilterError
-from app.observability.tracing import setup_tracing
+#from app.observability.tracing import setup_tracing
 from app.observability.logging import setup_logging
 
 from app.core.config import get_settings
@@ -84,6 +84,7 @@ async def lifespan(app: FastAPI):
         )
     except Exception as e:
         logger.warning("Qdrant Недоступен: %s",e)
+
     app.state.embed_model=None
     app.state.rag_service = None
     app.state.ingestion = None
@@ -129,22 +130,52 @@ async def lifespan(app: FastAPI):
     # Чекпоинтер держит соединение всё время работы приложения — граф
     # поднимается через AsyncExitStack и закрывается на shutdown.
     app.state.agent_graph = None
+    app.state.supervisor = None
     agent_stack = AsyncExitStack()
     try:
         from app.services.agent_persistent import agent_lifespan
+        from app.tools.graph_tools import tools
+        from app.agents.tools import build_search_knowledge_base
+        from langchain_openai import ChatOpenAI
+        from app.services.synonym_service import SynonymService
+
+        async def _search_kb(query: str) -> dict:
+            if app.state.rag_service is None:
+                return {"answer": "База знаний недоступна.", "sources": [], "confident": False}
+            return await app.state.rag_service.answer(query)
+
+        search_knowledge_base = build_search_knowledge_base(_search_kb)
+        full_tools = [*tools, search_knowledge_base]
+        agent_model = ChatOpenAI(
+            model=settings.llm.default_model,  # например, "gpt-4o"
+            openai_api_key=settings.llm.openai_api_key,  # ваш API-ключ
+            openai_api_base=settings.llm.base_url,  # базовый URL (если используете прокси/vllm)
+            max_tokens=1024,
+            temperature=0.0
+        )
+        app.state.synonym_service = SynonymService()
+        write_action = app.state.synonym_service.add_synonym
         app.state.agent_graph = await agent_stack.enter_async_context(
-            agent_lifespan(
-                settings.agent_checkpointer,
-                sqlite_path=settings.agent_sqlite_path,
-                postgres_url=settings.database_url,
-            )
+            agent_lifespan(model=agent_model, tools=full_tools, write_action=write_action,
+                           backend=settings.agent_checkpointer,
+                           sqlite_path=settings.agent_sqlite_path,
+                           postgres_url=settings.database_url,
+                           )
         )
         logger.info(
             "Персистентный агент собран (backend=%s)", settings.agent_checkpointer
         )
+        try:
+            from app.agents.supervisor import build_supervisor
+
+            app.state.supervisor = build_supervisor(agent_model, _search_kb)
+            logger.info("Мультиагент (supervisor) собран")
+        except Exception as e:
+            app.state.supervisor = None
+            logger.warning("Мультиагент не собран (%s) — /agent/research вернёт 503", e)
     except Exception as e:
         app.state.agent_graph = None
-        logger.warning("Агентный граф не собран (%s) — /agent/* вернут 503", e)
+        logger.warning("Агентный граф не собран (%s) — /agents/* вернут 503", e)
 
     yield
 
@@ -170,6 +201,11 @@ async def lifespan(app: FastAPI):
             await app.state.rag_service.close()
         except Exception:
             logger.exception("ошибка при закрытии RAG-сервиса")
+    if app.state.ingestion_service is not None:
+        try:
+            app.state.ingestion.close()
+        except Exception:
+            logger.exception("ошибка при закрытии индексатора")
 
 
 

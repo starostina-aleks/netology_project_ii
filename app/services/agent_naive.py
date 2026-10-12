@@ -17,7 +17,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
-        logging.FileHandler("agent.log", encoding="utf-8"), # Запись в файл
+        logging.FileHandler("agents.log", encoding="utf-8"), # Запись в файл
         logging.StreamHandler(sys.stdout)                  # Дублирование в консоль
     ]
 )
