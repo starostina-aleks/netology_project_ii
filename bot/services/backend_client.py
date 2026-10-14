@@ -76,6 +76,51 @@ class BackendClient:
             if ptype in("token","message_saved","sources"):
                 yield payload
 
+    async def send_message_to_agent(
+            self,
+            chat_id: UUID,
+            content: str,
+            category:str| None = None,
+            media: bytes|None=None,
+            mime: str |None=None,
+            filename:str="file.bin",
+            owner_external_id: str |None=None,
+    )->AsyncIterator[dict]:
+        data={
+            "thread_id": f"tg-{chat_id}",
+            "input": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": content
+                    }
+                ]
+            }
+        }
+        print("DATA BACKEND CLIENT",data)
+        files={"media":(filename,media,mime)} if media is not None else None
+        headers = (
+            {"X-Owner-External-Id": owner_external_id}
+            if owner_external_id
+            else {}
+        )
+        r = await post_with_retry(
+                client=self.http,
+                url=f"/agents/stream",
+                json=data,
+                timeout=120,
+                headers=headers
+            )
+        async for line in r.aiter_lines():
+            if not line.startswith("data:"):
+                continue
+            payload = json.loads(line.removeprefix("data:"))
+            ptype=payload.get("type")
+            if ptype=="done":
+                return
+            if ptype in("token","update","interrupt"):
+                yield payload
+
     async def clear_messages(
             self,
             chat_id: UUID):

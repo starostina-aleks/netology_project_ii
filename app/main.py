@@ -201,7 +201,7 @@ async def lifespan(app: FastAPI):
             await app.state.rag_service.close()
         except Exception:
             logger.exception("ошибка при закрытии RAG-сервиса")
-    if app.state.ingestion_service is not None:
+    if app.state.ingestion is not None:
         try:
             app.state.ingestion.close()
         except Exception:

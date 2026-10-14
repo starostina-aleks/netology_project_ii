@@ -31,10 +31,10 @@ async def handle_backend_error(
             await message.answer(f"🚦Слишком много запросов, подождите {retry} сек.")
             return
         if 500<=status <600:
-            await message.answer("Внутрення ошибка сервера. Мы уже знаем.")
+            await message.answer("Внутренняя ошибка сервера. Мы уже знаем.")
             return
         if isinstance(exc, httpx.HTTPError):
-            await message.answer("Сеть недоступеа. Проверьте соединение.")
+            await message.answer("Сеть недоступна. Проверьте соединение.")
             return
         log.exception("backend handler failed",exc_info=exc)
         await message.answer("Не удалось обработать запрос")

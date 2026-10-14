@@ -29,8 +29,8 @@ def _initial_state(message: str) -> dict:
     return {
         "messages": [HumanMessage(message)],
         "iteration_count": 0,
-        "tool_results": [],
-        "draft": None,
+        #"tool_results": [],
+        "draft": "",
         "is_synonym_saved": False,
         "count_add": 0,
     }
@@ -71,6 +71,7 @@ def _to_response(result: dict, thread_id: str) -> AgentChatResponse:
 async def agent_chat(req: AgentChatRequest, graph: AgentGraphDep) -> AgentChatResponse:
     if graph is None:
         raise HTTPException(status_code=503, detail="агентный граф не инициализирован")
+    print("")
     result = await graph.ainvoke(_initial_state(req.message), _config(req.thread_id))
     return _to_response(result, req.thread_id)
 
@@ -86,6 +87,7 @@ async def agent_resume(
 ) -> AgentChatResponse:
     if graph is None:
         raise HTTPException(status_code=503, detail="агентный граф не инициализирован")
+
     result = await graph.ainvoke(Command(resume=req.decision), _config(req.thread_id))
     return _to_response(result, req.thread_id)
 
@@ -130,7 +132,6 @@ async def agent_stream(
         raise HTTPException(status_code=422, detail="нужен input или resume")
 
     config = _config(req.thread_id)
-
     async def event_source() -> AsyncIterator[str]:
         async for stream_type, payload in graph.astream(
             graph_input, config, stream_mode=["updates", "messages"]
