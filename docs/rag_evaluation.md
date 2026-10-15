@@ -30,7 +30,7 @@
 *   **generation_latency_sec:** 2.6 сек
 
 ---
-## 4. A/B эксперимент 1: chunking
+## 4. A/B эксперимент: chunking
 
 | Вариант       | Faithfulness | Answer Relevancy | Context Precision | Context Recall | Factual_correctness | Has Citation | Средняя latency |
 |:--------------|:------------:|:----------------:|:-----------------:|:--------------:|:-------------------:|:------------:|:---------------:|
@@ -38,7 +38,7 @@
 | **1024 / 64** |     0.77     |       0.76       |       0.92        |      0.82      |        0.45         |     0.91     |      3 сек      |
 
 
-## 5. A/B эксперимент 1: re-ranker
+## 5. A/B эксперимент: re-ranker
 
 | Вариант          | Faithfulness | Answer Relevancy | Context Precision | Context Recall | Factual_correctness | Has Citation | Средняя latency |
 |:-----------------|:------------:|:----------------:|:-----------------:|:--------------:|:-------------------:|:------------:|:---------------:|
