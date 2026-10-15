@@ -66,3 +66,55 @@ async def stream_to_bot(message: Message,events)->str:
             chat_id=message.chat.id,text=buffer,reply_markup=reply_markup,
         )
     return buffer
+
+async def stream_to_bot_from_agent(message: Message,events)->str:
+
+    draft_id = uuid.uuid4().int & 0xFFFFFFFF
+    buffer = ""
+    last_draft_at = 0.0
+    assistant_message_id: str | None = None
+
+    await message.bot.send_message_draft(
+        chat_id=message.chat.id,text="",draft_id=draft_id,
+    )
+    last_draft_at = monotonic()
+    async for event in events:
+        print("EVENT: ", event)
+
+        if event.get("type") == "token":
+            buffer += event.get("text", "")
+
+            if not buffer.strip():
+                continue
+            now = monotonic()
+            if now - last_draft_at <DRAFT_MIN_INTERVAL_SEC:
+               continue
+            try:
+                await message.bot.send_message_draft(
+                        chat_id=message.chat.id,text=buffer,draft_id=draft_id, )
+                last_draft_at = now
+            except TelegramRetryAfter as e:
+                last_draft_at = now + e.retry_after
+        elif event.get("type") == "update":
+            nodes=event.get("nodes", "")
+            print("NODES: ", nodes)
+            for node in nodes:
+                buffer += f"\n[node] {node}\n"
+            print("BUFFER: ", f"[node] {node}")
+            await message.bot.send_message_draft(
+                    chat_id=message.chat.id, text=buffer, draft_id=draft_id, )
+        elif event.get("type") == "interrupt":
+            payload = event.get("payload", "")
+            buffer += f"\n[interrupt] {payload}\n"
+            await message.bot.send_message_draft(
+                chat_id=message.chat.id, text=buffer, draft_id=draft_id, )
+
+
+    if buffer:
+        reply_markup=(
+            feedback_kb(assistant_message_id) if assistant_message_id else None
+        )
+        await message.bot.send_message(
+            chat_id=message.chat.id,text=buffer,reply_markup=reply_markup,
+        )
+    return buffer

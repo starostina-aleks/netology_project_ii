@@ -18,7 +18,7 @@ from app.services.synonym_service import SynonymService
 from app.core.config import get_settings
 from langgraph.types import interrupt, Command
 from contextlib import AsyncExitStack
-
+import operator
 
 DANGEROUS_TOOL = "add_custom_synonym"
 
@@ -27,54 +27,61 @@ class AgentState(TypedDict):
     iteration_count: int
     tool_results: list[dict]
     draft: dict | None
-    is_synonym_saved: bool
+    is_synonym_saved: bool | None
     count_add: int
 
 
 def build_agent(model,tools, write_action,
     checkpointer: Any
 ):
-    bound_model = model.bind_tools(tools)
+    bound_model = model.bind_tools(tools,
+            )
+    tools_by_name = {tool.name: tool for tool in tools}
 
     async def compact_history(state: AgentState) -> dict:
         messages = state["messages"]
-        print("MESSAGES",get_buffer_string(messages))
         if len(messages) <= 20:
             return {}
         old,recent = messages[:-10],messages[-10:]
         summary= await model.ainvoke(
-            f"Сожми историю в 5 предложений, сохрани ключевые решения и tool- результат:\n"
-            f"{get_buffer_string(old)}"
+            "Сожми предыдущую историю в 5 предложений. "
+            "Сохрани ключевые решения, результаты инструментов "
+            "и состояние незавершённых действий.\n\n"f"{get_buffer_string(old)}"
         )
         return{
-            "messages": [SystemMessage(f"Резуме предыдущих шагов {summary.content}")] + recent,
+            "messages": [SystemMessage(f"Резюме предыдущих шагов:\n {summary.content}")] + recent,
         }
 
     async def call_model(state: AgentState) -> dict:
-        print("MESSAGES")
-        for message in state["messages"]:
-            print(
-                type(message).__name__,
-                getattr(message, "tool_call_id", None),
-                getattr(message, "tool_calls", None),
-            )
-        response = await bound_model.ainvoke(state["messages"])
+
+        print("CALL_MODEL")
+        response = await bound_model.ainvoke(state["messages"],parallel_tool_calls=False,)
         return {
             "messages": [response],
             "iteration_count": state["iteration_count"] + 1
         }
 
+    def route_after_model(state: AgentState):
+        if state["iteration_count"] >= 6:
+            return "force_finish"
+        last = state["messages"][-1]
+        calls = getattr(last, "tool_calls", None)
+        if not calls:
+            return "force_finish"
+        if any(call["name"] == DANGEROUS_TOOL for call in calls):
+            return "prepare_synonyms"
+        return "execute_tool"
+
     async def execute_tool(state: AgentState) -> dict:
         last = state["messages"][-1]
-        by_name = {t.name: t for t in tools}
         new_messages, new_results = [], []
         for tc in last.tool_calls:
             if tc["name"] == DANGEROUS_TOOL:
                 continue
-            if tc["name"] not in by_name:
+            if tc["name"] not in tools_by_name:
                 content = f"error: unknown tool '{tc['name']}'"
             else:
-                content = str(await by_name[tc["name"]].ainvoke(tc["args"]))
+                content = str(await tools_by_name[tc["name"]].ainvoke(tc["args"]))
             new_messages.append(ToolMessage(content=content, tool_call_id=tc["id"]))
             new_results.append({"name": tc["name"], "args": tc["args"], "result": content})
         return {"messages": new_messages, "tool_results": new_results}
@@ -101,20 +108,25 @@ def build_agent(model,tools, write_action,
 
     def approve_and_add(state: AgentState) -> dict:
         draft = state["draft"] or {}
-        count_add = state["count_add"] or 0
         decision = interrupt({"preview": draft, "type": "approve_add_synonym"})
+        content = ""
+        saved = False
+        count_add = state.get("count_add", 0)
         if decision is True:
-            print("DECISION  = TRUE")
-            content = write_action(abbreviation=draft.get("abbreviation"), synonyms=draft.get("synonyms"))
-            print(f"SERVICE ANSWER  {content}")
-            count_add += 1
+            try:
+                result = write_action(abbreviation=draft.get("abbreviation"), synonyms=draft.get("synonyms"))
+                content = f"Результат сохранения: {result}"
+                saved = True
+                count_add += 1
+            except Exception as exc:
+                content = f"Не удалось сохранить синоним: {exc}"
+                saved = False
         else:
             content = "Действие отменено пользователем"
-        print(f"TOOL_CALL_ID = {draft.get("tool_call_id", "")}")
         return {
-            "is_synonym_saved": decision,
+            "is_synonym_saved": saved,
             "messages": [
-                ToolMessage(content=content, tool_call_id=draft.get("tool_call_id", ""))
+                ToolMessage(content=content, tool_call_id=draft.get("tool_call_id",""))
             ],
             "tool_results": [
                 {"name": DANGEROUS_TOOL, "args": draft, "result": content}
@@ -122,27 +134,16 @@ def build_agent(model,tools, write_action,
             "count_add": count_add
         }
 
-    def route_after_model(state: AgentState):
-        if state["iteration_count"] >= 6:
-            return "force_finish"
-        last = state["messages"][-1]
-        calls = getattr(last, "tool_calls", None)
-        if not calls:
-            return "force_finish"
-        if any(call["name"] == DANGEROUS_TOOL for call in calls):
-            return "prepare_synonyms"
-        return "execute_tool"
-
-
     builder = StateGraph(AgentState)
-    builder.add_node("compact_history", compact_history)
+    #builder.add_node("compact_history", compact_history)
     builder.add_node("call_model", call_model)
     builder.add_node("execute_tool", execute_tool)
     builder.add_node("prepare_synonyms", prepare_synonyms)
     builder.add_node("approve_and_add", approve_and_add)
     builder.add_node("force_finish", force_finish)
-    builder.add_edge(START, "compact_history")
-    builder.add_edge("compact_history", "call_model")
+    #builder.add_edge(START, "compact_history")
+    #builder.add_edge("compact_history", "call_model")
+    builder.add_edge(START, "call_model")
     builder.add_conditional_edges(
         "call_model",
         route_after_model,
@@ -159,7 +160,6 @@ def build_agent(model,tools, write_action,
 
     # Компилируем граф с чекпоинтером
     return builder.compile(checkpointer=checkpointer)
-
 
 @asynccontextmanager
 async def agent_lifespan(model,tools,write_action,
@@ -185,6 +185,9 @@ async def agent_lifespan(model,tools,write_action,
 
 async def main():
     agent_stack = AsyncExitStack()
+    query = "Найди в документах расшифровку ООН и добавь в базу"#"Найди в документах расшифровку ПЭЖ и добавь в базу данных"
+    # Передаем config с thread_id, так как мы используем checkpointer
+    config = {"configurable": {"thread_id": "secure_session_9"}}
     try:
         from app.tools.graph_tools import tools
         from app.agents.tools import build_search_knowledge_base
@@ -210,6 +213,7 @@ async def main():
                 postgres_url=settings.database_url,
             )
         )
+        """
         mermaid = custom_graph.get_graph().draw_mermaid()
         mermaid_png = custom_graph.get_graph().draw_mermaid_png()
         name="agent_persistent"
@@ -217,9 +221,10 @@ async def main():
             fh.write(mermaid)
         with open(f"docs/{name}.png", "wb") as fh:
             fh.write(mermaid_png)
-        query = "Найди в документах расшифровку ПЭЖ и добавь в базу данных"
-        # Передаем config с thread_id, так как мы используем checkpointer
-        config = {"configurable": {"thread_id": "secure_session_7"}}
+        """
+
+
+        """
         #final = await custom_graph.ainvoke(Command(resume=True), config)
         state = await custom_graph.aget_state(config)
 
@@ -250,31 +255,30 @@ async def main():
             if stream_type == "updates":
                 print("\n[node",list(payload.keys()))
 
-
+        """
     except Exception as e:
         print(f"Агентный граф не собран ({e})")
 
-
-    """
-    
-        result = await custom_graph.ainvoke(
-        {"messages": [HumanMessage(content=query)], "iteration_count": 0, "draft": "", "is_synonym_saved": False},
+    result = await custom_graph.ainvoke(
+        {"messages": [HumanMessage(content=query)], "iteration_count": 0, "tool_results": [],"draft": "", "is_synonym_saved": False},
         config=config
     )
-    print("RESULT:" ,result)
-   
-    final = await custom_graph.ainvoke(Command(resume= True),config)
-    print("FINAL:", final)
+
+    """
+
+    result = await custom_graph.ainvoke(Command(resume= True),config)
+    """
+    """
     async for state in custom_graph.aget_state_history(config):
         print(
             f"Шаг в метаданных: {state.metadata['step']} | Источник: {state.metadata['source']} | State внутри: {state.values.get('step')}")
-    
+    """
     for msg in result["messages"]:
         print(f"{msg.type}: {msg.content}")
         if getattr(msg, "tool_calls", None):
             print(f"tool_calls: {msg.tool_calls}")
     
-    """
+
 
 
 import sys

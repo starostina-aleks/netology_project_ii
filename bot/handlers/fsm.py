@@ -19,7 +19,17 @@ async def start_ask(message:Message,state:FSMContext)->None:
     await  message.answer("Выберите категорию:",reply_markup=topic_kb())
     await state.set_state(AskFlow.waiting_for_topic)
 
-@router.callback_query(AskFlow.waiting_for_topic,F.data.startswith("topic:"))
+
+@router.message(Command('cancel'))
+async def cmd_cancel(message:Message,state:FSMContext):
+    current=await state.get_data()
+    if current is None:
+        await message.answer("Нечего отменять")
+        return
+    await state.clear()
+    await message.answer("Сценарий отменен")
+
+@router.callback_query(F.data.startswith("topic:"),AskFlow.waiting_for_topic)
 async def on_topic(callback:CallbackQuery,state:FSMContext):
     value=callback.data.split(":",1)[1]
     if value == "cancel":
@@ -72,11 +82,4 @@ async def on_question(
         await typing_task
         #await state.clear()
 
-@router.message(Command('cancel'))
-async def cmd_cancel(message:Message,state:FSMContext):
-    current=await state.get_data()
-    if current is None:
-        await message.answer("Нечего отменять")
-        return
-    await state.clear()
-    await message.answer("Сценарий отменен")
+

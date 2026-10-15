@@ -216,7 +216,6 @@ class ChatService:
                 "filename":filename,
                 "part":part,
             }
-        print("SEND MESSAGE", user_content, part)
         chat =await self.repository.get_chat(chat_id)
         if chat is None:
             raise ValueError(f"Chat with id {chat_id} not found")
