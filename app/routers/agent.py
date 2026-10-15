@@ -66,7 +66,6 @@ def _to_response(result: dict, thread_id: str) -> AgentChatResponse:
         tool_results=result.get("tool_results", []),
     )
 
-
 @router.post("/chat", response_model=AgentChatResponse)
 async def agent_chat(req: AgentChatRequest, graph: AgentGraphDep) -> AgentChatResponse:
     if graph is None:
@@ -74,11 +73,9 @@ async def agent_chat(req: AgentChatRequest, graph: AgentGraphDep) -> AgentChatRe
     result = await graph.ainvoke(_initial_state(req.message), _config(req.thread_id))
     return _to_response(result, req.thread_id)
 
-
 class AgentResumeRequest(BaseModel):
     thread_id: str
     decision: bool | str = True
-
 
 @router.post("/resume", response_model=AgentChatResponse)
 async def agent_resume(
@@ -109,7 +106,6 @@ def _format_event(stream_type: str, payload: Any) -> dict | None:
         return {"type": "token", "text": text} if text else None
     return None
 
-
 @router.post("/stream")
 async def agent_stream(
     req: AgentStreamRequest, graph: AgentGraphDep
@@ -128,9 +124,7 @@ async def agent_stream(
         }
     else:
         raise HTTPException(status_code=422, detail="нужен input или resume")
-
     config = _config(req.thread_id)
-
     async def event_source() -> AsyncIterator[str]:
         async for stream_type, payload in graph.astream(
             graph_input, config, stream_mode=["updates", "messages"]
@@ -139,7 +133,6 @@ async def agent_stream(
             if event is not None:
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         yield 'data: {"type": "done"}\n\n'
-
     return StreamingResponse(event_source(), media_type="text/event-stream")
 
 class ResearchRequest(BaseModel):

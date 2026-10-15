@@ -45,8 +45,8 @@ class VectorStore:
         else:
             info = await self.client.get_collection(self.collection)
             print("INFO", info)
-            #actual_dim = info.config.params.vectors['text-dense'].size  # type: ignore[union-attr]
-            actual_dim = info.config.params.vectors.size
+            actual_dim = info.config.params.vectors['text-dense'].size  # type: ignore[union-attr]
+            #actual_dim = info.config.params.vectors.size
 
             if actual_dim != self.dim:
                 raise VectorStoreDimensionMismatch(

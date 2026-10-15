@@ -1,7 +1,7 @@
 from app.chat.repositories.pg_models  import RagQueryRow
 
 from datetime import datetime, timedelta, UTC
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from app.admin.schemas import StatsOut, UserStats, ExportItem, ExportResult
 from app.observability.pii import redact_pii
 
@@ -43,7 +43,9 @@ class AdminRepository:
             row = fb.first()
             up = (row.up if row else 0) or 0
             down = (row.down if row else 0) or 0
-            ratio = up / (up + down) if (up+down)>0 else 0.0
+            total_fb = up + down
+            ratio = up / total_fb if total_fb > 0 else 0.0
+            negative_rate = down / total_fb if total_fb > 0 else 0.0
 
             top_questions = await s.execute(
                 text(
@@ -87,14 +89,35 @@ class AdminRepository:
                 }
                 for row in rows
             ]
+            rag = (
+                await s.execute(
+                    text(
+                        """
+                        SELECT
+                            COUNT(*) AS total,
+                            COUNT(*) FILTER (WHERE confident = false) AS refused
+                        FROM rag_queries
+                        WHERE created_at >= :since
+                        """
+                    ),
+                    {"since": since},
+                )
+            ).first()
+            rag_total = (rag.total if rag else 0) or 0
+            refused = (rag.refused if rag else 0) or 0
+            refusal_rate = refused / rag_total if rag_total > 0 else 0.0
 
-            return StatsOut(
+        gaps = await self.knowledge_gaps(limit=10)
+
+        return StatsOut(
                 total_messages=total or 0,
                 active_users=active or 0,
                 feedback_ratio=ratio,
                 questions=questions,
-
-            )
+                refusal_rate=refusal_rate,
+                negative_feedback_rate=negative_rate,
+                knowledge_gaps=gaps,
+        )
 
     async def compute_stats_users(self,limit=50)->list[UserStats]:
         if self.session_factory is None:
@@ -199,3 +222,21 @@ class AdminRepository:
                 )
             )
             await s.commit()
+
+    async def knowledge_gaps(self, limit: int = 10) -> list[str]:
+        """Топ вопросов без уверенного ответа — что добавить в базу знаний.
+
+        Тот же `select().group_by()`, что и весь чат-репозиторий, без сырого SQL.
+        """
+        if self.session_factory is None:
+            return []
+        stmt = (
+            select(RagQueryRow.question_normalized)
+            .where(RagQueryRow.confident.is_(False))
+            .group_by(RagQueryRow.question_normalized)
+            .order_by(func.count().desc())
+            .limit(limit)
+        )
+        async with self.session_factory() as s:
+            rows = (await s.execute(stmt)).scalars().all()
+        return list(rows)

@@ -206,7 +206,6 @@ class RAGService:
             category:str|None=None,
             use_condense:bool=True
     )->dict|None:
-        print("GENERATE RAG CONTEXT",question,history)
         if self._retriever is None:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
         search_query = question
