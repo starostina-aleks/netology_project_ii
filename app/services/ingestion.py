@@ -99,7 +99,7 @@ def mark_as_failed(path_str,reason:str):
 class IngestionService:
     def __init__(self,settings: AppSettings,embed_model):
         self._settings = settings
-        self._data_dir=settings.rag_data_dir/"knowledge_base"
+        self._data_dir=settings.rag_data_dir
         self._docstore_path=self._data_dir.parent/f"{settings.rag_collection}_docstore.json"
         self._docstore = self._load_docstore()
         self._embed_model = embed_model
@@ -227,7 +227,8 @@ class IngestionService:
         )
         return len(nodes)
 
-    def file_metadata(self,path: str) -> dict:
+    """
+        def file_metadata(self,path: str) -> dict:
         meta= {
             "source_file": Path(path).name,
             "doc_type": doc_type_from_path(path),
@@ -244,7 +245,29 @@ class IngestionService:
                 meta["id_document"] = result.get("id")
                 meta["title"] = result.get("title")
         return meta
+    """
 
+    def file_metadata(self,path: str) -> dict:
+        meta= {
+            "source_file": Path(path).name,
+            "doc_type": doc_type_from_path(path),
+            "indexed_at": date.today().isoformat(),
+            "source_path": path,
+            **data_from_path(path, self._data_dir),
+        }
+        current_path = Path(path).resolve()
+        if self._manifest_docs is not None:
+            result = None
+            for item in self._manifest_docs:
+                manifest_file = item.get("file")
+                if manifest_file:
+                    if Path(manifest_file).resolve() == current_path:
+                        result = item
+                        break
+            if result:
+                meta["id_document"] = result.get("id")
+                meta["title"] = result.get("title")
+        return meta
 
     def _read(self,input_files:list[Path]|None=None)->list[Document]:
         file_extractor = {

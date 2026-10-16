@@ -18,6 +18,8 @@ from app.services.synonym_service import SynonymService
 from app.core.config import get_settings
 from langgraph.types import interrupt, Command
 from contextlib import AsyncExitStack
+from openai import RateLimitError, APIConnectionError, APITimeoutError
+from langchain_core.messages import AIMessage
 import operator
 
 DANGEROUS_TOOL = "add_custom_synonym"
@@ -29,6 +31,7 @@ class AgentState(TypedDict):
     draft: dict | None
     is_synonym_saved: bool | None
     count_add: int
+    error: str | None
 
 
 def build_agent(model,tools, write_action,
@@ -51,17 +54,37 @@ def build_agent(model,tools, write_action,
         return{
             "messages": [SystemMessage(f"Резюме предыдущих шагов:\n {summary.content}")] + recent,
         }
-
-    async def call_model(state: AgentState) -> dict:
-
-        print("CALL_MODEL")
+    """
+        async def call_model(state: AgentState) -> dict:
         response = await bound_model.ainvoke(state["messages"],parallel_tool_calls=False,)
         return {
             "messages": [response],
             "iteration_count": state["iteration_count"] + 1
         }
+    """
+    async def call_model(state: AgentState) -> dict:
+        try:
+            response = await bound_model.ainvoke(state["messages"])
+            return {"messages": [response],
+                    "iteration_count": state["iteration_count"] + 1,
+                    "error": None}
+        except RateLimitError as e:
+            # это transient - RetryPolicy его уже обработала, дошли сюда - все попытки кончились
+            return {
+                "messages": [AIMessage("Превышен лимит запросов, попробуйте через минуту.")],
+                "iteration_count": state["iteration_count"] + 1,
+                "error": "rate_limit",
+            }
+        except (APIConnectionError, APITimeoutError):
+            return {
+                "messages": [AIMessage("Сервер временно недоступен.")],
+                "iteration_count": state["iteration_count"] + 1,
+                "error": "connection",
+            }
 
     def route_after_model(state: AgentState):
+        if state.get("error") is not None:
+            return "force_finish"
         if state["iteration_count"] >= 6:
             return "force_finish"
         last = state["messages"][-1]
@@ -135,15 +158,15 @@ def build_agent(model,tools, write_action,
         }
 
     builder = StateGraph(AgentState)
-    #builder.add_node("compact_history", compact_history)
+    builder.add_node("compact_history", compact_history)
     builder.add_node("call_model", call_model)
     builder.add_node("execute_tool", execute_tool)
     builder.add_node("prepare_synonyms", prepare_synonyms)
     builder.add_node("approve_and_add", approve_and_add)
     builder.add_node("force_finish", force_finish)
-    #builder.add_edge(START, "compact_history")
-    #builder.add_edge("compact_history", "call_model")
-    builder.add_edge(START, "call_model")
+    builder.add_edge(START, "compact_history")
+    builder.add_edge("compact_history", "call_model")
+    #builder.add_edge(START, "call_model")
     builder.add_conditional_edges(
         "call_model",
         route_after_model,

@@ -12,7 +12,7 @@ from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from app.services.condense import condense_question
 from llama_index.core.vector_stores import MetadataFilter, MetadataFilters, FilterOperator
-
+from app.services.synonym_service import SynonymService
 import logging
 
 import httpx
@@ -69,7 +69,14 @@ def build_sources(source_nodes:list[NodeWithScore]) -> list[dict]:
     return sources
 
 class RAGService:
-    def __init__(self,settings:AppSettings,embed_model=None,nodes:list[BaseNode] =None,splitter=None)->None:
+    def __init__(
+            self,
+            settings:AppSettings,
+            embed_model=None,
+            nodes:list[BaseNode] =None,
+            splitter=None,
+            synonym_service:SynonymService=None
+    )->None:
         self._postprocessor: list = []
         self._settings = settings
         if embed_model is None:
@@ -116,6 +123,7 @@ class RAGService:
             model=settings.rag_rerank_model,
             top_n=settings.rag_rerank_top_k
         )
+        self._synonym_service = synonym_service
 
     def build(self)->None:
         vector_store = QdrantVectorStore(aclient=self._aclient,
@@ -158,12 +166,7 @@ class RAGService:
                     len(documents),
                     self._settings.rag_collection,
                 )
-        self._retriever=self._index.as_retriever(
-            similarity_top_k=self._settings.rag_retrieved_top_k,
-            sparse_top_k=self._settings.rag_retrieved_top_k,
-            enable_hybrid=True,
-            vector_store_query_mode="hybrid"
-        )
+
         if self._settings.rag_use_reranker:
             self._postprocessor=[self._reranker]
 
@@ -172,81 +175,52 @@ class RAGService:
             text_qa_template=QA_PROMPT,
         )
 
-    async def answer(self,query:str)->dict|None:
-        if self._retriever is None:
+    def _get_retriever(self, filters=None):
+        if self._index is None:
             raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
-        nodes=await self._retrieve(query)
-        return await self._synthesize(query=query,nodes=nodes)
-
-    #.evaluate_inputs(q), возвращающий answer и список строк retrieved_contexts за один ретрив)
-    async def evaluate_inputs(
-            self,
-            query:str,
-    )->dict|None:
         if self._retriever is None:
-            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
-
-        start_total = time.perf_counter()
-        start_retrieval = time.perf_counter()
-        nodes = await self._retrieve(query)
-        end_retrieval = time.perf_counter()
-        result=await self._synthesize(query=query, nodes=nodes)
-        end_total = time.perf_counter()
-
-        result["retrieved_contexts"] = [sn.get_content() for sn in nodes]
-        result['total_latency_sec'] = end_total - start_total
-        result['retrieval_latency_sec'] = end_retrieval - start_retrieval
-        return result
-
-
-    async def generate_rag_context(
-            self,
-            question:str,
-            history: list[dict],
-            category:str|None=None,
-            use_condense:bool=True
-    )->dict|None:
-        if self._retriever is None:
-            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
-        search_query = question
-        if use_condense:
-            search_query = await condense_question(
-                self._llm,
-                question,
-                history,
-                model=self._settings.model_condense,
+            self._retriever = self._index.as_retriever(
+                similarity_top_k=self._settings.rag_retrieved_top_k,
+                sparse_top_k=self._settings.rag_retrieved_top_k,
+                enable_hybrid=True,
+                vector_store_query_mode="hybrid"
             )
-        if category is None:
-            nodes=await self._retrieve(search_query)
-        else:
-            filters = []
-            filters.append(
-                    MetadataFilter(
-                        key="folder_parts",
-                        value=[category],
-                        operator=FilterOperator.IN,
-                    )
-                )
+        if filters is None:
+            return self._retriever
+        return self._index.as_retriever(
+                similarity_top_k=self._settings.rag_retrieved_top_k,
+                sparse_top_k=self._settings.rag_retrieved_top_k,
+                enable_hybrid=True,
+                vector_store_query_mode="hybrid",
+                filters=filters,
+            )
+
+    def _get_filters_category(self, category:str):
+        return MetadataFilter(
+                key="folder_parts",
+                value=[category],
+                operator=FilterOperator.IN,
+            )
+
+    async def _retrieve(self, query: str, category: str = None) -> list[NodeWithScore]:
+        metadata_filters = None
+        if category is not  None:
+            filters = [self._get_filters_category(category)]
             metadata_filters = MetadataFilters(filters=filters)
-            print("FILTERS=",category)
-            nodes=await self.retrieve(query=search_query,filters=metadata_filters)
-        top_score = max((sn.score or 0.0 for sn in nodes), default=0.0)
-        if not nodes or top_score < self._settings.rag_score_threshold:
-            return {
-                "text": REFUSAL_TEXT,
-                "top_score": round(top_score, 3),
-                "sources": [],
-                "confident": False
-            }
-        rag_context = QA_PROMPT.format(context_str=_numbered_context(nodes),
-                                        query_str=question)
-        sources = build_sources(nodes)
-        return {
-            "text": rag_context,
-            "top_score": round(top_score, 3),
-            "sources": sources,
-            "confident": True
-        }
+        loc_retriever = self._get_retriever(filters=metadata_filters)
+
+        nodes = await loc_retriever.aretrieve(query)
+        for postprocessor in self._postprocessor:
+            nodes = postprocessor.postprocess_nodes(nodes, query_str=query)
+        return nodes[:self._settings.rag_rerank_top_k]
+
+    async def answer(self,query:str,category:str =None)->dict|None:
+        if self._index is None:
+            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
+        if self._synonym_service is not None:
+            query=self._synonym_service.expand_query(query)
+        nodes=await self._retrieve(query,category)
+        return await self._synthesize(query=query,nodes=nodes)
 
     async def _synthesize(self,query:str,nodes:list[NodeWithScore])->dict:
         top_score=max((sn.score or 0.0 for sn in nodes),default=0.0)
@@ -285,16 +259,75 @@ class RAGService:
             "generation_latency_sec": end_generation - start_generation
         }
 
-    async def _retrieve(self,query:str)->list[NodeWithScore]:
-        nodes=await self._retriever.aretrieve(query)
-        for postprocessor in self._postprocessor:
-            nodes = postprocessor.postprocess_nodes(nodes,query_str=query)
-        return nodes[:self._settings.rag_rerank_top_k]
+    #.evaluate_inputs(q), возвращающий answer и список строк retrieved_contexts за один ретрив)
+    async def evaluate_inputs(
+            self,
+            query:str,
+    )->dict|None:
+        if self._index is None:
+            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
+
+        start_total = time.perf_counter()
+        start_retrieval = time.perf_counter()
+        if self._synonym_service is not None:
+            query=self._synonym_service.expand_query(query)
+        nodes = await self._retrieve(query)
+        end_retrieval = time.perf_counter()
+        result=await self._synthesize(query=query, nodes=nodes)
+        end_total = time.perf_counter()
+
+        result["retrieved_contexts"] = [sn.get_content() for sn in nodes]
+        result['total_latency_sec'] = end_total - start_total
+        result['retrieval_latency_sec'] = end_retrieval - start_retrieval
+        return result
+
+    async def generate_rag_context(
+            self,
+            question:str,
+            history: list[dict],
+            category:str|None=None,
+            use_condense:bool=True
+    )->dict|None:
+        if self._retriever is None:
+            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
+        if self._synonym_service is not None:
+            question = self._synonym_service.expand_query(question)
+        search_query = question
+        if use_condense:
+            search_query = await condense_question(
+                self._llm,
+                question,
+                history,
+                model=self._settings.model_condense,
+            )
+        if category is None:
+            nodes=await self._retrieve(search_query)
+        else:
+            filters = []
+            filters.append(self._get_filters_category(category))
+            metadata_filters = MetadataFilters(filters=filters)
+
+            nodes=await self._retrieve(query=search_query,filters=metadata_filters)
+        top_score = max((sn.score or 0.0 for sn in nodes), default=0.0)
+        if not nodes or top_score < self._settings.rag_score_threshold:
+            return {
+                "text": REFUSAL_TEXT,
+                "top_score": round(top_score, 3),
+                "sources": [],
+                "confident": False
+            }
+        rag_context = QA_PROMPT.format(context_str=_numbered_context(nodes),
+                                        query_str=question)
+        sources = build_sources(nodes)
+        return {
+            "text": rag_context,
+            "top_score": round(top_score, 3),
+            "sources": sources,
+            "confident": True
+        }
 
     def rerank(self, query: str):
-        raw_nodes = self.retrieve(query=query, top_k=20)
-        ranked = self._reranker.postprocess_nodes(nodes=raw_nodes, query_str=query)
-        return ranked
+        return self._retrieve(query=query)
 
     async def get_nodes(self):
         scroll_results, _ =await self._aclient.scroll(
@@ -304,22 +337,6 @@ class RAGService:
         limit=10000
         )
         return scroll_results
-
-    async def retrieve(self,query:str,filters = None):
-        loc_retriever = self._retriever
-        if filters is not None:
-            loc_retriever = self._index.as_retriever(
-            similarity_top_k=self._settings.rag_retrieved_top_k,
-            sparse_top_k=self._settings.rag_retrieved_top_k,
-            enable_hybrid=True,
-            vector_store_query_mode="hybrid",
-            filters=filters,
-        )
-        nodes = await loc_retriever.aretrieve(query)
-        for postprocessor in self._postprocessor:
-            nodes = postprocessor.postprocess_nodes(nodes, query_str=query)
-        return nodes
-        #return _numbered_context(nodes)
 
     def get_prev_text(self,prev_node_id):
         qdrant_client = self._index.vector_store.client

@@ -29,11 +29,13 @@ RUN /app/.venv/bin/python -m nltk.downloader -d /app/nltk_data punkt_tab
 
 # ========== STAGE 2: RUNTIME ==========
 FROM python:3.13-slim-bookworm
+ARG RAG_DATA_DIR
 
 RUN useradd --create-home --uid 1000 appuser
 
 WORKDIR /app
 
+RUN mkdir -p $RAG_DATA_DIR && chown -R appuser:appuser $RAG_DATA_DIR
 COPY --from=builder --chown=appuser:appuser /app /app
 
 ENV PATH="/app/.venv/bin:$PATH" \

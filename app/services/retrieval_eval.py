@@ -187,6 +187,5 @@ if __name__ == "__main__":
     rag_service = RAGService(settings)
     rag_service.build()
     func = rag_service.retrieve
-    #func=rag_service.rerank
     nodes=evaluate_retriever(rag_service=rag_service,golden_set= data,output_file="output/out1.txt",func=func)
     print(nodes)
