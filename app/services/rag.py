@@ -84,8 +84,9 @@ class RAGService:
                 model_name=settings.embedding_model,
                 device="cpu",
                 embed_batch_size=8,
+                text_instruction = "passage: ",  # Будет автоматически добавляться при индексации (ingestion)
+                query_instruction = "query: ",
             )
-
         Settings.embed_model = embed_model
         sync_client = httpx.Client(proxy=settings.https_proxy)
         async_client = httpx.AsyncClient(proxy=settings.https_proxy)
@@ -377,6 +378,8 @@ async def main():
         model_name=model_path,
         device="cpu",
         embed_batch_size=8,
+        text_instruction = "passage: ",  # Будет автоматически добавляться при индексации (ingestion)
+        query_instruction = "query: ",
     )
     
     service = RAGService(get_settings(),embed_model=embed_model)

@@ -77,6 +77,8 @@ async def _smoke(client) -> None:
 
     sim = lambda v1, v2: float(np.dot(v1, v2))
     gaps_pre, gaps_none = [], []
+    relevant_scores = []
+    irrelevant_scores = []
     start_time = time.perf_counter()
     for item in data:
         q, rel, irrel = item["query"], item["relevant"], item["irrelevant"]
@@ -88,8 +90,37 @@ async def _smoke(client) -> None:
         s_rel_n = sim(await client.embed_cached(q), await client.embed_cached(rel))
         s_irr_n = sim(await client.embed_cached(q), await client.embed_cached(irrel))
         gaps_none.append(s_rel_n - s_irr_n)
+
+        q_vec = await client.embed_cached(q, "query")
+        rel_vec = await client.embed_cached(rel, "passage")
+        irrel_vec = await client.embed_cached(irrel, "passage")
+        relevant_scores.append(sim(q_vec, rel_vec))
+        irrelevant_scores.append(sim(q_vec, irrel_vec))
+
+
     end_time = time.perf_counter()
     print("difference:", np.mean(gaps_pre) - np.mean(gaps_none))
+
+    min_rel = min(relevant_scores)
+    max_irrel = max(irrelevant_scores)
+
+    print(f"Минимум релевантных (min_relevant):   {min_rel:.4f}")
+    print(f"Максимум нерелевантных (max_irrelevant): {max_irrel:.4f}")
+    threshold = 0
+    if min_rel > max_irrel:
+        # Идеальное разделение классов
+        threshold = (min_rel + max_irrel) / 2
+        print(f"✅ Классы идеально разделены!")
+        print(f"Рекомендуемый порог (середина): {threshold:.4f}")
+
+    else:
+        # Диапазоны пересекаются (шум в данных)
+        print(f"⚠️ Внимание: диапазоны пересекаются (min_rel < max_irrel).")
+        # В случае пересечения часто берут среднее арифметическое между границами
+        threshold = (min_rel + max_irrel) / 2
+        print(f"Альтернативный порог (компромисс): {threshold:.4f}")
+
+
     return end_time - start_time
 
 
@@ -109,7 +140,10 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 
-
+#Минимум релевантных (min_relevant):   0.8498
+#Максимум нерелевантных (max_irrelevant): 0.7837
+#✅ Классы идеально разделены!
+#Рекомендуемый порог (середина): 0.8168
 #difference: 0.0037056795146331867
 #Время выполнения бенчмарка 1 (Холодный): 2.715 сек.
 #difference: 0.0037056795146331867

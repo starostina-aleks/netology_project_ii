@@ -319,6 +319,8 @@ if __name__=="__main__":
             model_name=model_path,
             device="cpu",
             embed_batch_size=8,
+            text_instruction = "passage: ",
+            query_instruction = "query: ",
         )
         ingest=IngestionService(settings=settings,embed_model=embed_model)
         ingest.ingest_all()
