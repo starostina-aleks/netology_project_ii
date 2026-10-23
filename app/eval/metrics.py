@@ -91,13 +91,11 @@ def build_metrics(judge: Any, embeddings: Any) -> RagasMetrics:
 class CitationVerdict(BaseModel):
     has_citation: Literal["yes", "no"]
 
-
 CITATION_PROMPT = (
     "Содержит ли ответ ссылку на источник: маркер вида '[1]'/'[doc_id]', имя "
     "файла, или фразу 'согласно ...', 'в источнике X указано'?\n\n"
     "Ответ: {response}"
 )
-
 
 def make_has_citation(judge: Any):
     """Кастомная метрика «ответ содержит цитату» через @discrete_metric.
@@ -114,7 +112,6 @@ def make_has_citation(judge: Any):
         return verdict.has_citation
 
     return has_citation
-
 
 async def eval_row(rag: Any, row: dict, metrics: RagasMetrics, has_citation: Any) -> dict:
     """Шесть метрик по одной строке golden dataset.

@@ -25,13 +25,13 @@ class EmbeddingsClient:
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
-    async def _encode_batch(self, texts: list[str],batch_size=64) -> list[list[float]]:
+    async def _encode_batch(self, texts: list[str]) -> list[list[float]]:
 
         embeddings = await asyncio.to_thread(
             self._model.encode,
             texts,
             normalize_embeddings=True,
-            batch_size=batch_size,
+            batch_size=self._batch_size,
             show_progress_bar=True
         )
         return embeddings.tolist()
@@ -140,11 +140,18 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 
-#Минимум релевантных (min_relevant):   0.8498
-#Максимум нерелевантных (max_irrelevant): 0.7837
-#✅ Классы идеально разделены!
-#Рекомендуемый порог (середина): 0.8168
-#difference: 0.0037056795146331867
-#Время выполнения бенчмарка 1 (Холодный): 2.715 сек.
-#difference: 0.0037056795146331867
-#Время выполнения бенчмарка 2 (Горячий): 0.023 сек.
+"""
+difference: 0.005959369927004715
+Минимум релевантных (min_relevant):   0.8503
+Максимум нерелевантных (max_irrelevant): 0.7864
+✅ Классы идеально разделены!
+Рекомендуемый порог (середина): 0.8183
+Время выполнения бенчмарка 1 (Холодный): 9.208 сек.
+
+difference: 0.005959369927004715
+Минимум релевантных (min_relevant):   0.8503
+Максимум нерелевантных (max_irrelevant): 0.7864
+✅ Классы идеально разделены!
+Рекомендуемый порог (середина): 0.8183
+Время выполнения бенчмарка 2 (Горячий): 0.040 сек.
+"""

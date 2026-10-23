@@ -14,7 +14,7 @@ WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project --no-dev --extra tracing
 
 COPY app/ ./app/
 COPY bot/ ./bot/
@@ -35,8 +35,14 @@ RUN useradd --create-home --uid 1000 appuser
 
 WORKDIR /app
 
-RUN mkdir -p $RAG_DATA_DIR && chown -R appuser:appuser $RAG_DATA_DIR
+#RUN mkdir -p /$RAG_DATA_DIR && chown -R appuser:appuser /$RAG_DATA_DIR
+
+RUN mkdir -p /$RAG_DATA_DIR && chmod 777 /$RAG_DATA_DIR
+
 COPY --from=builder --chown=appuser:appuser /app /app
+
+USER root
+RUN chmod 777 /app
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \

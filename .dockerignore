@@ -42,6 +42,7 @@ docs/
 notebooks/
 data/
 var/
+data_rag/
 
 # Docker
 Dockerfile

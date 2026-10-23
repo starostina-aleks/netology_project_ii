@@ -27,7 +27,7 @@ def build_search_knowledge_base(
         if not sources:
             return answer
         cited = "; ".join(
-            f"[{s.get('id')}] {s.get('file_name', '')}".strip() for s in sources
+            f"[{s.get('id')}] {s.get('source', '')}".strip() for s in sources
         )
         return f"{answer}\nИсточники: {cited}"
 

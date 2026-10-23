@@ -1,5 +1,4 @@
 import asyncio
-from llama_index.embeddings.huggingface.base import HuggingFaceEmbedding
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from llama_index.core import Settings,StorageContext, SimpleDirectoryReader, VectorStoreIndex
 from llama_index.vector_stores.qdrant import QdrantVectorStore
@@ -20,6 +19,8 @@ import json
 import re
 from openai import AsyncOpenAI
 import time
+from llama_index.embeddings.huggingface.base import HuggingFaceEmbedding
+
 
 logger = logging.getLogger(__name__)
 
@@ -137,9 +138,11 @@ class RAGService:
 
         # Проверяем базу перед сборкой индекса
         if  self._client.collection_exists(self._settings.rag_collection):
+
             self._index = VectorStoreIndex.from_vector_store(
                 vector_store=vector_store
             )
+
             count =  self._client.count(self._settings.rag_collection)
             logger.info(
                 "RAG: подключён к коллекции %s (%d точек)",
@@ -370,7 +373,6 @@ class RAGService:
 
 
 async def main():
-    print('start main')
     model_path = r'F:\embeddings\multilingual-e5-base'
 
 

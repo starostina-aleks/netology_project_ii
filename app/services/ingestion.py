@@ -6,21 +6,20 @@ from datetime import date
 from pathlib import Path
 from llama_index.core import Document
 from llama_index.core.ingestion import IngestionPipeline, DocstoreStrategy
-from llama_index.core.node_parser import SentenceSplitter,MarkdownNodeParser
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 import json
-from pydantic_core.core_schema import format_ser_schema
+from qdrant_client import  models, QdrantClient
+from qdrant_client.models import Distance,VectorParams, HnswConfigDiff
 
 from app.core.config import Settings as AppSettings,get_settings
 from llama_index.core import SimpleDirectoryReader
 from llama_index.readers.file import UnstructuredReader,PyMuPDFReader,HTMLTagReader,MarkdownReader
 from collections import Counter
-from qdrant_client import AsyncQdrantClient, QdrantClient
 from collections import defaultdict
-from app.services.my_chunking import save_nodes_to_file
 from app.parsers.split_text import CustomMarkdownTransformer,get_sentence_splitter
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +109,30 @@ class IngestionService:
         )
         self._client = QdrantClient(url=settings.qdrant_url,
                                     api_key=qdrantkey,
-                                    timeout=60.0, )
+                                    timeout=60.0,
+                                    )
+
+        if not self._client.collection_exists(self._settings.rag_collection):
+            self._client.create_collection(
+                collection_name=self._settings.rag_collection,
+                vectors_config={
+                    "text-dense": VectorParams(
+                        size=self._settings.embedding_dim, distance=Distance.DOT
+                    )
+                },
+                sparse_vectors_config={
+                    "text-sparse-new": models.SparseVectorParams()
+                },
+                hnsw_config=HnswConfigDiff(
+                    m=16,
+                    ef_construct=100
+                )
+            )
+            self._client.create_payload_index(
+                collection_name=self._settings.rag_collection,
+                field_name="folder_parts",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
         self._vector_store = QdrantVectorStore(
             client=self._client,
             collection_name=self._settings.rag_collection,
@@ -321,6 +343,7 @@ if __name__=="__main__":
             embed_batch_size=8,
             text_instruction = "passage: ",
             query_instruction = "query: ",
+            normalize = True
         )
         ingest=IngestionService(settings=settings,embed_model=embed_model)
         ingest.ingest_all()

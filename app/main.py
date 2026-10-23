@@ -99,6 +99,7 @@ async def lifespan(app: FastAPI):
             embed_batch_size=8,
             text_instruction = "passage: ",
             query_instruction = "query: ",
+            normalize = True,
         )
         ingestion = IngestionService(settings,embed_model=app.state.embed_model)
         app.state.ingestion = ingestion
