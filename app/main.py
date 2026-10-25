@@ -103,7 +103,14 @@ async def lifespan(app: FastAPI):
         )
         ingestion = IngestionService(settings,embed_model=app.state.embed_model)
         app.state.ingestion = ingestion
+        logger.info(
+            f"IngestionService доступен, коллекция %s",
+            settings.rag_collection
+        )
         if ingestion.is_collection_empty():
+            logger.info(
+                "Начинаю загрузку данных..."
+            )
             await asyncio.to_thread(ingestion.ingest_all)
         rag_service = RAGService(settings,embed_model=app.state.embed_model)
         await asyncio.to_thread(rag_service.build)
@@ -113,7 +120,7 @@ async def lifespan(app: FastAPI):
             settings.rag_collection
         )
     except Exception as e:
-        logger.warning("RAG/индексация недоступны : %s - /rag/query и /document вернут 503",e)
+        logger.warning("RAG/индексация недоступны : %s - /rag/query и /documents/upload вернут 503",e)
 
     app.state.async_engine = None
     app.state.session_factory = None
@@ -154,6 +161,7 @@ async def lifespan(app: FastAPI):
             openai_api_key=settings.llm.openai_api_key,  # ваш API-ключ
             openai_api_base=settings.llm.base_url,  # базовый URL (если используете прокси/vllm)
             max_tokens=1024,
+            streaming=False,
             temperature=0.0
         )
         app.state.synonym_service = SynonymService()

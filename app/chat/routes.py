@@ -90,18 +90,6 @@ async def post_message(
         headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
 
-@router.post(
-    "/{chat_id}/system-message",
-)
-async def post_system_message(
-        chat_id: UUID,
-        chat_service:ChatServiceDep,
-        text:str,
-        notify:bool = True,
-):
-    chat = await chat_service.get_chat(chat_id=chat_id)
-    await notify_user(chat_id_tg=chat.owner_external_id, text=text)
-
 @router.get("/{chat_id}/messages",
             response_model=list[ChatMessage])
 async def list_messages(

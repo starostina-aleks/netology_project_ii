@@ -253,10 +253,12 @@ class RAGService:
             temperature=0.3,
             max_tokens=4000,
         )
+
         end_generation = time.perf_counter()
+        answer = response.choices[0].message.content or ""
         sources=build_sources(nodes)
         return {
-            "answer": parse_citations(str(response),sources),
+            "answer": parse_citations(str(answer),sources),
             "top_score": round(top_score, 3),
             "sources": sources,
             "confident": True,
@@ -292,8 +294,8 @@ class RAGService:
             category:str|None=None,
             use_condense:bool=True
     )->dict|None:
-        if self._retriever is None:
-            raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
+        #if self._retriever is None:
+            #raise RuntimeError("RAG-индекс не инициализирован: сначала вызвать build().")
         if self._synonym_service is not None:
             question = self._synonym_service.expand_query(question)
         search_query = question
@@ -304,7 +306,8 @@ class RAGService:
                 history,
                 model=self._settings.model_condense,
             )
-        if category is None:
+        '''
+                if category is None:
             nodes=await self._retrieve(search_query)
         else:
             filters = []
@@ -312,6 +315,8 @@ class RAGService:
             metadata_filters = MetadataFilters(filters=filters)
 
             nodes=await self._retrieve(query=search_query,filters=metadata_filters)
+        '''
+        nodes = await self._retrieve(query=search_query,category=category)
         top_score = max((sn.score or 0.0 for sn in nodes), default=0.0)
         if not nodes or top_score < self._settings.rag_score_threshold:
             return {

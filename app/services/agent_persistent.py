@@ -22,6 +22,285 @@ from openai import RateLimitError, APIConnectionError, APITimeoutError
 from langchain_core.messages import AIMessage
 import operator
 
+
+DANGEROUS_TOOL = "add_custom_synonym"
+MAX_ITERATIONS = 6
+
+
+class AgentState(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
+    iteration_count: int
+    tool_results: list[dict]
+    draft: dict | None
+    pending_synonyms: list[dict]
+    is_synonym_saved: bool | None
+    count_add: int
+    error: str | None
+
+
+def build_agent(model, tools, write_action, checkpointer: Any):
+    # По возможности вызываем только один инструмент за раз.
+    bound_model = model.bind_tools(
+        tools,
+        parallel_tool_calls=False,
+    )
+
+    tools_by_name = {tool.name: tool for tool in tools}
+
+    def find_last_tool_call_message(messages):
+        for message in reversed(messages):
+            if isinstance(message, AIMessage) and message.tool_calls:
+                return message
+        return None
+
+    async def call_model(state: AgentState) -> dict:
+        try:
+            response = await bound_model.ainvoke(state["messages"])
+
+            return {
+                "messages": [response],
+                "iteration_count": state.get("iteration_count", 0) + 1,
+                "error": None,
+            }
+
+        except RateLimitError:
+            return {
+                "messages": [
+                    AIMessage(
+                        content="Превышен лимит запросов, попробуйте через минуту."
+                    )
+                ],
+                "iteration_count": state.get("iteration_count", 0) + 1,
+                "error": "rate_limit",
+            }
+
+        except (APIConnectionError, APITimeoutError):
+            return {
+                "messages": [
+                    AIMessage(content="Сервер временно недоступен.")
+                ],
+                "iteration_count": state.get("iteration_count", 0) + 1,
+                "error": "connection",
+            }
+
+    def route_after_model(state: AgentState) -> str:
+        if state.get("error"):
+            return "force_finish"
+
+        last = state["messages"][-1]
+        calls = getattr(last, "tool_calls", None)
+
+        # Если модель запросила инструменты, сначала обработаем их.
+        # Нельзя завершать граф с незакрытыми tool_calls.
+        if calls:
+            return "execute_tool"
+
+        if state.get("iteration_count", 0) >= MAX_ITERATIONS:
+            return "force_finish"
+
+        # Модель сформировала обычный текстовый ответ.
+        return "force_finish"
+
+    async def execute_tool(state: AgentState) -> dict:
+        last = find_last_tool_call_message(state["messages"])
+
+        if last is None:
+            return {}
+
+        new_messages = []
+        new_results = []
+
+        for tc in last.tool_calls:
+            # Опасные инструменты выполняются только после подтверждения.
+            # Ответ ToolMessage будет создан в approve_and_add.
+            if tc["name"] == DANGEROUS_TOOL:
+                continue
+
+            try:
+                tool = tools_by_name.get(tc["name"])
+
+                if tool is None:
+                    result = f"Ошибка: неизвестный инструмент {tc['name']!r}"
+                else:
+                    result = await tool.ainvoke(tc["args"])
+                    result = str(result)
+
+            except Exception as exc:
+                result = f"Ошибка инструмента {tc['name']}: {exc}"
+
+            # Каждый безопасный вызов получает ответ со своим ID.
+            new_messages.append(
+                ToolMessage(
+                    content=result,
+                    tool_call_id=tc["id"],
+                )
+            )
+
+            new_results.append({
+                "name": tc["name"],
+                "args": tc["args"],
+                "result": result,
+            })
+
+        return {
+            "messages": new_messages,
+            "tool_results": state.get("tool_results", []) + new_results,
+        }
+
+    def route_after_tools(state: AgentState) -> str:
+        last = find_last_tool_call_message(state["messages"])
+
+        if last is None:
+            return "force_finish"
+
+        dangerous_calls = [
+            tc for tc in last.tool_calls
+            if tc["name"] == DANGEROUS_TOOL
+        ]
+
+        if dangerous_calls:
+            return "prepare_synonyms"
+
+        # Все вызовы в последнем AIMessage обработаны.
+        if state.get("iteration_count", 0) >= MAX_ITERATIONS:
+            return "force_finish"
+
+        return "call_model"
+
+    async def prepare_synonyms(state: AgentState) -> dict:
+        last = find_last_tool_call_message(state["messages"])
+
+        if last is None:
+            raise ValueError("Не найден AIMessage с вызовами инструментов")
+
+        drafts = []
+
+        for tc in last.tool_calls:
+            if tc["name"] != DANGEROUS_TOOL:
+                continue
+
+            args = tc["args"]
+
+            drafts.append({
+                "abbreviation": args.get("abbreviation", ""),
+                "synonyms": args.get("synonyms", []),
+                "tool_call_id": tc["id"],
+            })
+
+        if not drafts:
+            raise ValueError("Не найдены вызовы add_custom_synonym")
+
+        return {
+            "draft": drafts[0],
+            "pending_synonyms": drafts,
+        }
+
+    def approve_and_add(state: AgentState) -> dict:
+        drafts = state.get("pending_synonyms", [])
+
+        if not drafts:
+            raise ValueError("Нет синонимов, ожидающих подтверждения")
+
+        new_messages = []
+        new_results = []
+        count_add = state.get("count_add", 0)
+        all_saved = True
+
+        # Поддерживаем каждый опасный tool_call, даже если модель
+        # неожиданно вернула несколько вызовов в одном AIMessage.
+        for draft in drafts:
+            tool_call_id = draft["tool_call_id"]
+
+            # После resume LangGraph повторно запускает узел.
+            # interrupt восстанавливает соответствующее значение.
+            decision = interrupt({
+                "preview": draft,
+                "type": "approve_add_synonym",
+            })
+
+            if decision is True:
+                try:
+                    result = write_action(
+                        abbreviation=draft["abbreviation"],
+                        synonyms=draft["synonyms"],
+                    )
+                    content = f"Результат сохранения: {result}"
+                    saved = True
+                    count_add += 1
+
+                except Exception as exc:
+                    content = f"Не удалось сохранить синоним: {exc}"
+                    saved = False
+                    all_saved = False
+            else:
+                content = "Действие отменено пользователем"
+                saved = False
+                all_saved = False
+
+            # Для каждого опасного вызова создаём отдельный ToolMessage.
+            new_messages.append(
+                ToolMessage(
+                    content=content,
+                    tool_call_id=tool_call_id,
+                )
+            )
+
+            new_results.append({
+                "name": DANGEROUS_TOOL,
+                "args": {
+                    "abbreviation": draft["abbreviation"],
+                    "synonyms": draft["synonyms"],
+                },
+                "result": content,
+            })
+
+        return {
+            "messages": new_messages,
+            "tool_results": state.get("tool_results", []) + new_results,
+            "is_synonym_saved": all_saved,
+            "count_add": count_add,
+            "pending_synonyms": [],
+            "draft": None,
+        }
+
+    async def force_finish(state: AgentState) -> dict:
+        return {}
+
+    builder = StateGraph(AgentState)
+
+    builder.add_node("call_model", call_model)
+    builder.add_node("execute_tool", execute_tool)
+    builder.add_node("prepare_synonyms", prepare_synonyms)
+    builder.add_node("approve_and_add", approve_and_add)
+    builder.add_node("force_finish", force_finish)
+
+    builder.add_edge(START, "call_model")
+
+    builder.add_conditional_edges(
+        "call_model",
+        route_after_model,
+        {
+            "execute_tool": "execute_tool",
+            "force_finish": "force_finish",
+        },
+    )
+
+    builder.add_conditional_edges(
+        "execute_tool",
+        route_after_tools,
+        {
+            "prepare_synonyms": "prepare_synonyms",
+            "call_model": "call_model",
+            "force_finish": "force_finish",
+        },
+    )
+
+    builder.add_edge("prepare_synonyms", "approve_and_add")
+    builder.add_edge("approve_and_add", "call_model")
+    builder.add_edge("force_finish", END)
+
+    return builder.compile(checkpointer=checkpointer)
+'''
 DANGEROUS_TOOL = "add_custom_synonym"
 
 class AgentState(TypedDict):
@@ -37,9 +316,9 @@ class AgentState(TypedDict):
 def build_agent(model,tools, write_action,
     checkpointer: Any
 ):
-    bound_model = model.bind_tools(tools,
-            )
+    bound_model = model.bind_tools(tools,parallel_tool_calls=False)
     tools_by_name = {tool.name: tool for tool in tools}
+
 
     async def compact_history(state: AgentState) -> dict:
         messages = state["messages"]
@@ -54,14 +333,8 @@ def build_agent(model,tools, write_action,
         return{
             "messages": [SystemMessage(f"Резюме предыдущих шагов:\n {summary.content}")] + recent,
         }
-    """
-        async def call_model(state: AgentState) -> dict:
-        response = await bound_model.ainvoke(state["messages"],parallel_tool_calls=False,)
-        return {
-            "messages": [response],
-            "iteration_count": state["iteration_count"] + 1
-        }
-    """
+
+
     async def call_model(state: AgentState) -> dict:
         try:
             response = await bound_model.ainvoke(state["messages"])
@@ -158,15 +431,15 @@ def build_agent(model,tools, write_action,
         }
 
     builder = StateGraph(AgentState)
-    builder.add_node("compact_history", compact_history)
+    #builder.add_node("compact_history", compact_history)
     builder.add_node("call_model", call_model)
     builder.add_node("execute_tool", execute_tool)
     builder.add_node("prepare_synonyms", prepare_synonyms)
     builder.add_node("approve_and_add", approve_and_add)
     builder.add_node("force_finish", force_finish)
-    builder.add_edge(START, "compact_history")
-    builder.add_edge("compact_history", "call_model")
-    #builder.add_edge(START, "call_model")
+    #builder.add_edge(START, "compact_history")
+    #builder.add_edge("compact_history", "call_model")
+    builder.add_edge(START, "call_model")
     builder.add_conditional_edges(
         "call_model",
         route_after_model,
@@ -183,6 +456,9 @@ def build_agent(model,tools, write_action,
 
     # Компилируем граф с чекпоинтером
     return builder.compile(checkpointer=checkpointer)
+'''
+
+
 
 @asynccontextmanager
 async def agent_lifespan(model,tools,write_action,

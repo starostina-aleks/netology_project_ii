@@ -36,7 +36,6 @@ def topic_kb()->InlineKeyboardMarkup:
     return builder.as_markup()
 """
 
-
 def topic_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
@@ -70,3 +69,19 @@ def feedback_kb(message_id:str)->InlineKeyboardMarkup:
     )
     kb.adjust(2)
     return kb.as_markup()
+
+def approve_synonym_kb(chat_id) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Подтвердить",
+                    callback_data=f"approve_syn:{chat_id}",
+                ),
+                InlineKeyboardButton(
+                    text="❌ Отклонить",
+                    callback_data=f"reject_syn:{chat_id}",
+                ),
+            ]
+        ]
+    )

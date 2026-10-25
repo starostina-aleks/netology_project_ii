@@ -79,26 +79,30 @@ class BackendClient:
     async def send_message_to_agent(
             self,
             chat_id: UUID,
-            content: str,
-            category:str| None = None,
-            media: bytes|None=None,
-            mime: str |None=None,
-            filename:str="file.bin",
+            content: str |None =None,
+            resume: bool |None = None,
             owner_external_id: str |None=None,
     )->AsyncIterator[dict]:
-        data={
-            "thread_id": f"tg-{chat_id}",
-            "input": {
-                "messages": [
-                    {
+        print("SEND MESSAGE",chat_id,content,resume,owner_external_id)
+        data={"content":content,"resume":resume}
+        if resume is None:
+            data={
+                "thread_id": f"tg-{chat_id}",
+                "input": {
+                 "messages": [
+                     {
                         "role": "user",
-                        "content": content
-                    }
-                ]
+                             "content": content
+                     }
+                 ]
+                }
             }
-        }
-        print("DATA BACKEND CLIENT",data)
-        files={"media":(filename,media,mime)} if media is not None else None
+        else:
+            data = {
+                "thread_id": f"tg-{chat_id}",
+                "resume": resume,
+            }
+
         headers = (
             {"X-Owner-External-Id": owner_external_id}
             if owner_external_id
@@ -139,6 +143,19 @@ class BackendClient:
             message_id: str,
             owner_external_id: str,
             value:str
+    )->None:
+        r=await self.http.post(
+            f"/chats/{chat_id}/messages/{message_id}/feedback",
+            json={"owner_external_id": owner_external_id, "value": value},
+            headers={"X-Owner-External-Id": owner_external_id},
+        )
+        r.raise_for_status()
+
+    async def post_resume(
+            self,
+            chat_id: UUID,
+            resume: bool,
+            owner_external_id: str
     )->None:
         r=await self.http.post(
             f"/chats/{chat_id}/messages/{message_id}/feedback",

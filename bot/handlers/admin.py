@@ -5,7 +5,7 @@ from aiogram.filters import Command, CommandObject, Filter
 
 from bot.config import get_bot_settings
 from bot.services.backend_client import BackendClient
-
+import html
 log=logging.getLogger(__name__)
 
 class IsAdmin(Filter):
@@ -21,12 +21,41 @@ router.message.filter(IsAdmin())
 async def cmd_stats(message: Message,backend: BackendClient):
     try:
         s = await  backend.get_admin_stats()
+        ''' 
         text = (
             "<b>Статистика 24ч</b>\n"
             f"Сообщений: <code>{s.get('total_messages', 0)}</code>\n"
             f"DAU: <code>{s.get('active_users', 0)}</code>\n"
             f"Feedback ratio: <code>{s.get('feedback_ratio', 0):.1%}</code>"
         )
+        '''
+        text = (
+            "<b>Статистика 24ч</b>\n"
+            f"Сообщений: <code>{s.get('total_messages', 0)}</code>\n"
+            f"DAU: <code>{s.get('active_users', 0)}</code>\n"
+            f"Feedback ratio: <code>{s.get('feedback_ratio', 0):.1%}</code>\n"
+            f"Негативный feedback: <code>{s.get('negative_feedback_rate', 0):.1%}</code>\n"
+            f"Доля отказов RAG: <code>{s.get('refusal_rate', 0):.1%}</code>\n"
+        )
+
+        questions = s.get("questions", []) or []
+        if questions:
+            text += "\n<b>Топ вопросов</b>\n"
+            for i, q in enumerate(questions, start=1):
+                question = html.escape(str(q.get("question", "")))
+                count = q.get("count", 0)
+                text += f"{i}. {question} — <code>{count}</code>\n"
+            else:
+                text += "Нет данных\n"
+
+        gaps = s.get("knowledge_gaps", []) or []
+        text += "\n<b>Пробелы в базе знаний</b>\n"
+
+        if gaps:
+            for i, gap in enumerate(gaps, start=1):
+                text += f"{i}. {html.escape(str(gap))}\n"
+        else:
+            text += "Не обнаружены\n"
         await message.answer(text)
     except Exception as e:
         log.exception("stats failed ",e)

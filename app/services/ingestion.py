@@ -155,7 +155,8 @@ class IngestionService:
     def is_collection_empty(self)->bool:
         if not self._client.collection_exists(self._settings.rag_collection):
             return True
-        return self._client.count(self._settings.rag_collection)==0
+        logger.info(f"collection_exists {self._client.count(self._settings.rag_collection,exact=True).count}")
+        return self._client.count(self._settings.rag_collection,exact=True).count==0
 
     def _load_docstore(self)->SimpleDocumentStore:
         if self._docstore_path.exists():
