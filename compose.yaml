@@ -35,11 +35,11 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/ready', timeout=3).status == 200 else sys.exit(1)"
+        - "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3).status == 200 else sys.exit(1)"
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 6
+      start_period: 90s
 
   redis:
     image: redis:7.4-alpine
