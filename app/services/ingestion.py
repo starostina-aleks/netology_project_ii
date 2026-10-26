@@ -59,7 +59,7 @@ def data_from_path(file_path: str, data_dir: Path | None = None) -> dict:
         return {"folder_path": "", "folder_parts": []}
 
     try:
-        relative = Path(file_path).resolve().relative_to(data_dir.resolve()).parent
+        relative = Path(file_path).resolve().relative_to(Path(data_dir).resolve()).parent
     except ValueError:
         return {"folder_path": "", "folder_parts": []}
 
@@ -330,6 +330,7 @@ class IngestionService:
         valid_documents=[
             doc for doc in documents if doc.metadata.get("source_path") not in failed_files
         ]
+
         return valid_documents
 
 if __name__=="__main__":
@@ -348,3 +349,4 @@ if __name__=="__main__":
         )
         ingest=IngestionService(settings=settings,embed_model=embed_model)
         ingest.ingest_all()
+

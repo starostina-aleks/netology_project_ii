@@ -5,7 +5,8 @@ FROM python:3.13-slim-bookworm AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=0
+    UV_PYTHON_DOWNLOADS=0 \
+    UV_EXTRA=tracing
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.14 /uv /uvx /bin/
 
@@ -14,7 +15,7 @@ WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --no-dev --extra tracing
+    uv sync --frozen --no-install-project --no-dev
 
 COPY app/ ./app/
 COPY bot/ ./bot/
@@ -37,12 +38,16 @@ WORKDIR /app
 
 #RUN mkdir -p /$RAG_DATA_DIR && chown -R appuser:appuser /$RAG_DATA_DIR
 
-RUN mkdir -p /$RAG_DATA_DIR && chmod 777 /$RAG_DATA_DIR
+#RUN mkdir -p /$RAG_DATA_DIR && chmod 777 /$RAG_DATA_DIR
+
+RUN mkdir -p /$RAG_DATA_DIR
 
 COPY --from=builder --chown=appuser:appuser /app /app
+RUN chown -R appuser:appuser /$RAG_DATA_DIR
+
 
 USER root
-RUN chmod 777 /app
+RUN chmod 777 /$RAG_DATA_DIR
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
